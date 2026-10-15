@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% from "_macros.html" import demo_tag %}
+{% block title %}Waitlist{% endblock %}
+{% macro prefs(e) %}
+  {{ e.service.name }} · {{ e.doctor.name if e.doctor else 'Any doctor' }} ·
+  {% if e.date_from == e.date_to %}{{ e.date_from|fmt_date }}{% else %}{{ e.date_from|fmt_date }} to {{ e.date_to|fmt_date }}{% endif %} ·
+  {{ time_preferences[e.time_preference] }}
+{% endmacro %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Reception</p>
+    <h1>Waitlist</h1>
+    <p class="muted">Patients waiting for a consultation time, and cancelled slots that could suit them.</p>
+  </div>
+  <dl class="doctor-counts">
+    <div><dt>Waiting</dt><dd>{{ counts.waiting }}</dd></div>
+    <div><dt>Offered</dt><dd>{{ counts.offered }}</dd></div>
+    <div><dt>Newly available slots</dt><dd>{{ counts.newly_available }}</dd></div>
+  </dl>
+</div>
+
+<p class="doctor-note"><strong>Staff-controlled.</strong> Nothing here contacts a patient, reserves a slot or books automatically. “Offered” only records that reception has told the patient about a time; the slot stays open to everyone until it is booked, and it is booked only after the patient has accepted.</p>
+
+<section class="card" id="newly-available">
+  <div class="card-head"><h2>Newly available slots</h2><span class="muted">Freed by a cancellation and still free</span></div>
+  {% if opportunities %}
+  <ul class="opportunity-list">
+    {% for o in opportunities %}
+    <li class="opportunity" id="slot-{{ o.slot.id }}">
+      <div class="opportunity-slot">
+        <span class="appt-date">{{ 'Today' if o.slot.start_time.date() == today else o.slot.start_time|fmt_date }}</span>
+        <strong>{{ o.slot.start_time|fmt_time }}</strong>
+        <span class="muted">{{ o.slot.doctor.name }} · {{ o.slot.duration_minutes }} min</span>
+      </div>
+      <div class="opportunity-candidates">
+        {% if o.candidates %}
+        <p class="eyebrow">{{ o.candidates|length }} matching {{ 'candidate' if o.candidates|length == 1 else 'candidates' }}</p>
+        <ul class="candidate-list">
+          {% for e in o.candidates %}
+          <li class="candidate">
+            <div class="candidate-who">
+              <a class="timeline-link" href="/patients/{{ e.patient.id }}/timeline">{{ e.patient.name }}</a>
+              <span class="pill pill-{{ e.status|lower }}">{{ e.status }}</span>
+              <span class="muted">{{ e.patient.mobile }} · prefers {{ contact_preferences[e.contact_preference]|lower }}</span>
+              <span class="candidate-prefs">{{ prefs(e) }}</span>
+              {% if e.note %}<span class="muted small">Note: {{ e.note }}</span>{% endif %}
+            </div>
+            <div class="candidate-actions">
+              {% if e.status == 'WAITING' %}
+              <form method="post" action="/waitlist/{{ e.id }}/offer">
+                <input type="hidden" name="slot_id" value="{{ o.slot.id }}">
+                <button class="btn btn-sm" type="submit">Mark offered</button>
+              </form>
+              {% else %}
+              <form method="post" action="/waitlist/{{ e.id }}/book" class="accept-form">
+                <label class="check"><input type="checkbox" name="accepted" value="yes" required> Patient has accepted this time</label>
+                <button class="btn btn-sm btn-primary" type="submit">Book this slot</button>
+              </form>
+              <form method="post" action="/waitlist/{{ e.id }}/status">
+                <input type="hidden" name="status" value="WAITING">
+                <button class="btn btn-sm btn-ghost" type="submit">Offer declined</button>
+              </form>
+              {% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted">No waiting patient matches this time. It stays open for normal booking.</p>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">No cancelled slots to fill right now. When a booking is cancelled, its time appears here with the waiting patients it suits.</p>
+  {% endif %}
+</section>
+
+<div class="grid-2">
+  <section class="card" id="waiting">
+    <div class="card-head"><h2>Waiting patients</h2><span class="muted">{{ active_entries|length }} active</span></div>
+    {% if active_entries %}
+    <ul class="candidate-list">
+      {% for e in active_entries %}
+      <li class="candidate">
+        <div class="candidate-who">
+          <a class="timeline-link" href="/patients/{{ e.patient.id }}/timeline">{{ e.patient.name }}</a>
+          <span class="pill pill-{{ e.status|lower }}">{{ e.status }}</span> <span class="tag">{{ e.source }}</span>
+          <span class="muted">{{ e.patient.mobile }} · prefers {{ contact_preferences[e.contact_preference]|lower }} · added {{ e.created_at|fmt_date }}</span>
+          <span class="candidate-prefs">{{ prefs(e) }}</span>
+          {% if e.status == 'OFFERED' and e.offered_slot %}<span class="muted small">Offered {{ e.offered_slot.start_time|fmt_date }} at {{ e.offered_slot.start_time|fmt_time }} with {{ e.offered_slot.doctor.name }} (not reserved)</span>{% endif %}
+          {% if e.note %}<span class="muted small">Note: {{ e.note }}</span>{% endif %}
+        </div>
+        <div class="candidate-actions">
+          <form method="post" action="/waitlist/{{ e.id }}/status" data-confirm="Close this waitlist entry for {{ e.patient.name }}?">
+            <input type="hidden" name="status" value="CLOSED">
+            <button class="btn btn-sm btn-ghost-danger" type="submit">Close</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">Nobody is on the waitlist. Add a patient with the form, or the appointment assistant can add one when no time suits.</p>
+    {% endif %}
+    {% if past_entries %}
+    <details class="past-entries">
+      <summary>Recently booked or closed ({{ past_entries|length }})</summary>
+      <ul class="candidate-list">
+        {% for e in past_entries %}
+        <li class="candidate"><div class="candidate-who"><a class="timeline-link" href="/patients/{{ e.patient.id }}/timeline">{{ e.patient.name }}</a> <span class="pill pill-{{ e.status|lower }}">{{ e.status }}</span><span class="candidate-prefs">{{ prefs(e) }}</span>{% if e.appointment %}<span class="muted small">Booking #{{ e.appointment.id }}</span>{% endif %}</div></li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+  </section>
+
+  <section class="card" id="add">
+    <div class="card-head"><h2>Add to waitlist</h2></div>
+    <form method="post" action="/waitlist" class="form form-inline">
+      <label class="span-2">Existing patient
+        <select name="patient_id">
+          <option value="">Choose a patient…</option>
+          {% for p in all_patients %}<option value="{{ p.id }}" {{ 'selected' if form.patient_id == p.id|string }}>{{ p.name }} · {{ p.mobile }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Or new patient name <input name="new_name" value="{{ form.new_name or '' }}" maxlength="120"></label>
+      <label>New patient mobile <input name="new_mobile" value="{{ form.new_mobile or '' }}" inputmode="tel" maxlength="20"></label>
+      <label>Requested service
+        <select name="service_id" required>{% for s in services %}<option value="{{ s.id }}" {{ 'selected' if form.service_id == s.id }}>{{ s.name }}</option>{% endfor %}</select>
+      </label>
+      <label>Preferred doctor <span class="muted">(optional)</span>
+        <select name="doctor_id"><option value="">Any doctor</option>{% for d in doctors %}<option value="{{ d.id }}" {{ 'selected' if form.doctor_id == d.id|string }}>{{ d.name }}</option>{% endfor %}</select>
+      </label>
+      <label>From <input type="date" name="date_from" min="{{ today.isoformat() }}" value="{{ form.date_from or today.isoformat() }}" required></label>
+      <label>To <input type="date" name="date_to" min="{{ today.isoformat() }}" value="{{ form.date_to or days[-1].isoformat() }}" required></label>
+      <label>Preferred time
+        <select name="time_preference">{% for code, label in time_preferences.items() %}<option value="{{ code }}" {{ 'selected' if (form.time_preference or 'ANY') == code }}>{{ label }}</option>{% endfor %}</select>
+      </label>
+      <label>Contact preference
+        <select name="contact_preference">{% for code, label in contact_preferences.items() %}<option value="{{ code }}" {{ 'selected' if (form.contact_preference or 'PHONE') == code }}>{{ label }}</option>{% endfor %}</select>
+      </label>
+      <label class="span-2">Staff note <span class="muted">(optional)</span> <input name="note" value="{{ form.note or '' }}" maxlength="500"></label>
+      <p class="span-2 muted small">The contact preference is a note for reception. No message is sent from this demo.</p>
+      <div class="span-2"><button class="btn btn-primary" type="submit">Add to waitlist</button></div>
+    </form>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}QR check-in{% endblock %}
+{% from "_macros.html" import breadcrumbs %}
+{% block breadcrumbs %}{{ breadcrumbs([('Dashboard', '/'), ('Reception', none), ('QR check-in', none)]) }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Reception</p>
+    <h1>QR check-in</h1>
+    <p class="muted">Scan or enter the code from a patient’s demo appointment QR, then confirm their arrival.</p>
+  </div>
+</div>
+
+{% if done %}
+<section class="card checkin-result is-success" aria-live="polite">
+  <p class="eyebrow">Checked in</p>
+  <h2>{{ done.patient.name }} <span class="pill pill-{{ done.status|lower }}">{{ done.status|replace('_', ' ') }}</span></h2>
+  <p class="muted">{{ done.service.name }} with {{ done.doctor.name }} · {{ done.start_time|fmt_date }} at {{ done.start_time|fmt_time }}. The doctor’s list now shows this patient as arrived.</p>
+  <div class="page-actions">
+    <a class="btn" href="/#appointment-{{ done.id }}">View on dashboard</a>
+    <a class="btn" href="/doctor?doctor_id={{ done.doctor_id }}">Doctor workspace</a>
+    <a class="btn" href="/patients/{{ done.patient_id }}/timeline">Patient timeline</a>
+  </div>
+</section>
+{% endif %}
+
+<div class="grid-2">
+  <section class="card">
+    <div class="card-head"><h2>Enter check-in code</h2></div>
+    <form method="post" action="/check-in" class="form" id="checkin-form" autocomplete="off">
+      <label>Check-in code
+        <input name="token" id="checkin-token" required maxlength="200" spellcheck="false" autocapitalize="off" placeholder="Paste or type the code printed under the QR" {% if not result and not done %}autofocus{% endif %}>
+      </label>
+      <div class="page-actions">
+        <button class="btn btn-primary" type="submit">Find booking</button>
+        <button class="btn" type="button" id="scan-start" hidden>Scan with camera</button>
+      </div>
+      <p class="muted small" id="scan-note">Typing or pasting the code always works. Camera scanning is offered only in browsers that support it.</p>
+    </form>
+    <div class="scanner" id="scanner" hidden>
+      <video id="scan-video" playsinline muted></video>
+      <p class="muted small">Hold the QR code in front of the camera. Nothing is recorded or stored.</p>
+      <button class="btn btn-sm" type="button" id="scan-stop">Stop camera</button>
+    </div>
+  </section>
+
+  <section class="card" aria-live="polite">
+    <div class="card-head"><h2>Result</h2></div>
+    {% if result and result.state == 'READY' %}
+    {% set a = result.appointment %}
+    <div class="checkin-result is-ready">
+      <p class="eyebrow">Booking found</p>
+      <h3>{{ a.patient.name }} <span class="pill pill-{{ a.status|lower }}">{{ a.status }}</span></h3>
+      <dl class="consult-facts">
+        <div><dt>Mobile</dt><dd>{{ a.patient.mobile }}</dd></div>
+        <div><dt>Appointment</dt><dd>{{ a.start_time|fmt_date }} at {{ a.start_time|fmt_time }}</dd></div>
+        <div><dt>Doctor</dt><dd>{{ a.doctor.name }}</dd></div>
+        <div><dt>Service</dt><dd>{{ a.service.name }}</dd></div>
+      </dl>
+      <p class="muted small">{{ result.message }}</p>
+      <form method="post" action="/check-in/arrive" data-confirm="Mark {{ a.patient.name }} as arrived? The doctor’s list updates straight away.">
+        <input type="hidden" name="token" value="{{ entered }}">
+        <button class="btn btn-primary" type="submit">Mark patient arrived</button>
+      </form>
+    </div>
+    {% elif result and result.state == 'ALREADY_CHECKED_IN' %}
+    {% set a = result.appointment %}
+    <div class="checkin-result is-already">
+      <p class="eyebrow">No change made</p>
+      <h3>{{ result.message }}</h3>
+      <p class="muted">{{ a.patient.name }} · {{ a.start_time|fmt_time }} with {{ a.doctor.name }}{% if result.token.used_at %} · checked in at {{ result.token.used_at|fmt_time }}{% endif %}.</p>
+      <div class="page-actions"><a class="btn btn-sm" href="/doctor?doctor_id={{ a.doctor_id }}">Doctor workspace</a><a class="btn btn-sm" href="/patients/{{ a.patient_id }}/timeline">Patient timeline</a></div>
+    </div>
+    {% elif result %}
+    {# Refused: a message only. Nothing about whose booking it was is shown. #}
+    <div class="alert alert-error" role="alert">{{ result.message }}</div>
+    <p class="muted small">No booking details are shown for a code that cannot be used. You can still check the patient in from the booking itself.</p>
+    {% else %}
+    <p class="empty">Enter or scan a code to find the booking. Details appear here only for a valid code.</p>
+    {% endif %}
+  </section>
+</div>
+
+<p class="doctor-note"><strong>Demo check-in.</strong> A QR holds only a random code, never a name, number or appointment detail. Check-in is always confirmed by reception; patients cannot check themselves in. No QR codes are sent by WhatsApp or email in this demo.</p>
+{% endblock %}
+{% block scripts %}<script src="{{ asset('js/checkin.js') }}"></script>{% endblock %}

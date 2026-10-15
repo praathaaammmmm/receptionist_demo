@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#091D3E">
+  <meta name="robots" content="noindex">
+  <title>AI Appointment Assistant · {{ clinic.name }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..600&family=Instrument+Sans:wght@400..700&display=swap">
+  <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+  <link rel="stylesheet" href="{{ asset('css/assistant.css') }}">
+</head>
+<body class="public">
+  <a class="skip-link" href="#chat-input">Skip to message box</a>
+  <div class="demo-banner">Demo environment — sample data only. Do not enter real patient information.</div>
+
+  <header class="pub-header">
+    <div class="pub-bar">
+      <span class="brand">
+        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 2.5c-2.7 0-4.7 2-4.7 4.9 0 2 .7 3.3 1.3 5 .5 1.5.6 3.2 1 5 .4 1.9.9 4.1 2.4 4.1 1.7 0 1.5-2.6 2-4.6.3-1.2.8-2.1 1.8-2.1s1.5.9 1.8 2.1c.5 2 .3 4.6 2 4.6 1.5 0 2-2.2 2.4-4.1.4-1.8.5-3.5 1-5 .6-1.7 1.3-3 1.3-5 0-2.9-2-4.9-4.7-4.9-1.9 0-2.8.9-4.8.9s-2.9-.9-4.8-.9z"/></svg>
+        <span class="brand-name">{{ clinic.name }}</span>
+      </span>
+      <a class="pub-site" href="{{ website }}" rel="noopener">Clinic website <span aria-hidden="true">→</span></a>
+    </div>
+    <div class="pub-intro">
+      <p class="eyebrow">Guided demo assistant</p>
+      <h1>AI Appointment Assistant</h1>
+      <p>This assistant helps with appointments and general clinic information. It cannot give dental or medical advice; clinical questions are passed to our staff, who call you back.</p>
+    </div>
+  </header>
+
+  <main class="pub-main">
+    <section class="chat" aria-label="Conversation with the appointment assistant">
+      <div id="chat-log" class="chat-log" role="log" aria-live="polite" aria-relevant="additions"></div>
+      <div id="chat-options" class="chat-options" role="group" aria-label="Suggested replies"></div>
+      <form id="chat-form" class="chat-form" autocomplete="off" novalidate>
+        <label class="sr-only" for="chat-input" id="chat-label">Your message</label>
+        <input id="chat-input" name="text" type="text" maxlength="500" placeholder="Ask about hours, services or booking">
+        <button class="btn btn-primary" type="submit">Send</button>
+      </form>
+      <noscript><p class="alert alert-error">This assistant needs JavaScript. Please phone the clinic on {{ clinic.phone }} instead.</p></noscript>
+    </section>
+
+    <aside class="pub-notes" aria-label="Important information">
+      <div>
+        <h2>What this assistant can do</h2>
+        <ul>
+          <li>Answer general questions about hours, location, doctors and services</li>
+          <li>Offer available consultation times and take a booking request</li>
+          <li>Ask our front desk to call you. {{ callback_promise }}</li>
+        </ul>
+      </div>
+      <div>
+        <h2>What it cannot do</h2>
+        <ul>
+          <li>Diagnose a problem, recommend treatment or advise on medicines</li>
+          <li>Confirm CGHS or ECHS eligibility or treatment costs</li>
+          <li>Help in an emergency. Please phone the clinic or your local emergency services</li>
+        </ul>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="pub-footer">
+    <span>{{ clinic.name }} · {{ clinic.address }} · {{ clinic.phone }}</span>
+    <span>Demo build. Clinic details, doctors and fees shown here are sample data. This is an automated guided assistant, not a person.</span>
+  </footer>
+  <script src="{{ asset('js/assistant.js') }}"></script>
+</body>
+</html>

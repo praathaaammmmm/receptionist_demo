@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+voices/
+
+# Local secrets and generated files
+.env
+.env.local
+.venv/
+__pycache__/
+*.py[cod]
+data/*.db
+data/*.sqlite*
+*.log

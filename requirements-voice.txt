@@ -1,0 +1,2 @@
+# Optional: natural-sounding local voice for /call-demo. See README, "Voice-call simulation".
+piper-tts>=1.8

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% from "_macros.html" import demo_tag, initial, slot_legend %}
+{% block title %}Availability{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Schedule</p>
+    <h1>Doctor availability</h1>
+    <p class="muted">Consultation slots for the next 7 days.</p>
+  </div>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>Doctor</h2></div>
+  <div class="choice-row">
+    {% for d in doctors %}
+    <a class="choice {{ 'is-selected' if d.id == doctor.id }}" {% if d.id == doctor.id %}aria-current="true"{% endif %} href="/availability?doctor_id={{ d.id }}&date={{ day.isoformat() }}">
+      {{ initial(d.name) }}
+      <span class="choice-body">
+        <strong>{{ d.name }}</strong> {{ demo_tag(d) }}
+        <span class="muted">{{ d.speciality }}</span>
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+  <div class="card-head"><h2>Date</h2></div>
+  <div class="chip-row">
+    {% for d in days %}
+    <a class="chip {{ 'is-selected' if d == day }} {{ 'is-closed' if d in closed_days }}" {% if d == day %}aria-current="date"{% endif %} href="/availability?doctor_id={{ doctor.id }}&date={{ d.isoformat() }}">
+      {{ 'Today' if d == today else d|fmt_date }}{% if d in closed_days %} <span class="chip-note">Clinic closed</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>{{ doctor.name }} · {{ day|fmt_date }}</h2>
+    <span class="muted">{{ doctor.work_start|fmt_time }} – {{ doctor.work_end|fmt_time }} · {{ doctor.consultation_minutes }} min consultations</span>
+  </div>
+  {% if clinic_closed %}
+  <div class="closed-notice" role="status">
+    <strong>Clinic closed</strong>
+    <p>{{ closed_message }} No appointments can be booked on this day.</p>
+    {% if next_open %}<a class="btn btn-sm" href="/availability?doctor_id={{ doctor.id }}&date={{ next_open.isoformat() }}">View {{ next_open|fmt_date }}</a>{% endif %}
+  </div>
+  {% elif slots %}
+  <p class="muted">{{ slots|selectattr('available')|list|length }} of {{ slots|length }} slots available. Select an available slot to book it.</p>
+  <dl class="slot-counts">
+    <div><dt>Available</dt><dd>{{ slots|selectattr('available')|list|length }}</dd></div>
+    <div><dt>Booked</dt><dd>{{ slots|selectattr('status', 'equalto', 'BOOKED')|list|length }}</dd></div>
+    <div><dt>Past</dt><dd>{{ slots|selectattr('status', 'equalto', 'PAST')|list|length }}</dd></div>
+  </dl>
+  {{ slot_legend() }}
+  <div class="slot-grid">
+    {% for v in slots %}
+      {% if v.available %}
+      <a class="slot" href="/bookings/new?doctor_id={{ doctor.id }}&date={{ day.isoformat() }}&slot_id={{ v.slot.id }}">
+        <strong>{{ v.slot.start_time|fmt_time }}</strong><span>{{ v.slot.duration_minutes }} min · Available</span>
+      </a>
+      {% else %}
+      <span class="slot is-unavailable {{ 'is-booked' if v.status in ('BOOKED', 'BLOCKED') else 'is-past' }}">
+        <strong>{{ v.slot.start_time|fmt_time }}</strong><span>{{ v.slot.duration_minutes }} min · {{ {'BOOKED': 'Booked', 'BLOCKED': 'Doctor unavailable'}.get(v.status, 'Past') }}</span>
+      </span>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty">{{ doctor.name }} does not have consultation slots on this day.</p>
+  {% endif %}
+</section>
+{% endblock %}

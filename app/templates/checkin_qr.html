@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Check-in QR{% endblock %}
+{% from "_macros.html" import breadcrumbs %}
+{% block breadcrumbs %}<div class="no-print">{{ breadcrumbs([('Dashboard', '/'), (appointment.patient.name, '/patients/' ~ appointment.patient.id), ('Check-in QR', none)]) }}</div>{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <div>
+    <p class="eyebrow">Reception</p>
+    <h1>Appointment check-in QR</h1>
+    <p class="muted">{{ appointment.patient.name }} · {{ appointment.service.name }} with {{ appointment.doctor.name }} · {{ appointment.start_time|fmt_date }} at {{ appointment.start_time|fmt_time }}</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-ghost" href="/#appointment-{{ appointment.id }}">Back to dashboard</a>
+    {% if record %}
+    <a class="btn" href="/appointments/{{ appointment.id }}/checkin-qr.svg" download>Download QR</a>
+    <button class="btn btn-primary" type="button" id="print-card">Print card</button>
+    {% endif %}
+  </div>
+</div>
+
+{% if record %}
+<div class="qr-layout">
+  <section class="qr-card" aria-label="Demo appointment check-in QR card">
+    <p class="qr-clinic">{{ clinic.name }}</p>
+    <p class="qr-label">Demo appointment check-in QR</p>
+    <div class="qr-image" role="img" aria-label="QR code containing the check-in code">{{ qr_svg|safe }}</div>
+    <p class="qr-code-label">Check-in code</p>
+    <p class="qr-code" id="qr-token">{{ record.token }}</p>
+    <p class="qr-valid">Valid on {{ appointment.start_time.strftime('%A, %d %B %Y') }} only. Show this at reception when you arrive.</p>
+    <p class="qr-small">Demo only. This code contains no personal information.</p>
+  </section>
+
+  <section class="card no-print">
+    <div class="card-head"><h2>About this QR</h2></div>
+    <dl class="consult-facts">
+      <div><dt>Status</dt><dd><span class="pill pill-{{ appointment.status|lower }}">{{ appointment.status|replace('_', ' ') }}</span></dd></div>
+      <div><dt>Check-in open</dt><dd>{{ window[0]|fmt_time }} to {{ window[1]|fmt_time }}, {{ appointment.start_time|fmt_date }}</dd></div>
+      <div><dt>Used</dt><dd>{{ record.used_at|fmt_time if record.used_at else 'Not yet' }}</dd></div>
+    </dl>
+    <ul class="qr-facts">
+      <li>The QR holds only the random code shown under it. The patient’s name, number and appointment are not in it.</li>
+      <li>It works once, on the appointment date, for this booking only.</li>
+      <li>Reception confirms the arrival on the <a href="/check-in">QR check-in</a> screen. Nothing is sent to the patient in this demo; print or download the card to hand it over.</li>
+    </ul>
+    <div class="page-actions"><a class="btn btn-primary" href="/check-in">Open QR check-in</a></div>
+  </section>
+</div>
+{% else %}
+<p class="empty">No check-in QR exists for this booking. A QR can be generated for a confirmed booking that is today or later. <a href="/">Back to dashboard</a></p>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script src="{{ asset('js/checkin.js') }}"></script>{% endblock %}

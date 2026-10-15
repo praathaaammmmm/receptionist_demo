@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% from "_macros.html" import demo_tag, initial %}
+{% block title %}Settings{% endblock %}
+{% macro awaiting() %}<span class="tag tag-placeholder" title="Sample value. Replace with the clinic owner's approved details.">Placeholder · awaiting owner approval</span>{% endmacro %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Configuration</p>
+    <h1>Clinic settings</h1>
+    <p class="muted">Each section explains what it changes. Values marked <span class="tag tag-demo">Demo</span> are sample data; values marked “awaiting owner approval” are placeholders until the clinic owner supplies the real ones.</p>
+  </div>
+</div>
+
+<nav class="settings-tabs" aria-label="Settings sections">
+  <a href="#clinic">Clinic profile</a>
+  <a href="#doctors">Doctors and availability</a>
+  <a href="#services">Services and demo fees</a>
+  <a href="#schedule">Clinic schedule and closed days</a>
+  <a href="#demo-data">Demo data</a>
+</nav>
+
+<section class="card settings-section" id="clinic">
+  <div class="card-head"><h2>Clinic profile {{ demo_tag(clinic) }}</h2></div>
+  <p class="affects"><strong>Affects:</strong> the name, address and phone shown in the page footer, the patient assistant and the call demo, and the currency used for fees.</p>
+  <form method="post" action="/settings/clinic" class="form form-inline">
+    <label>Clinic name <input name="name" value="{{ clinic.name }}" required maxlength="120"></label>
+    <label>Phone {% if 'phone' in placeholder_fields %}{{ awaiting() }}{% endif %} <input name="phone" value="{{ clinic.phone }}" required maxlength="40"></label>
+    <label class="span-2">Address {% if 'address' in placeholder_fields %}{{ awaiting() }}{% endif %} <input name="address" value="{{ clinic.address }}" required maxlength="255"></label>
+    <label>Email {% if 'email' in placeholder_fields %}{{ awaiting() }}{% endif %} <input name="email" type="email" value="{{ clinic.email or '' }}" maxlength="120"></label>
+    <label>Currency symbol <input name="currency_symbol" value="{{ clinic.currency_symbol }}" maxlength="8"></label>
+    <div class="span-2"><button class="btn btn-primary" type="submit">Save clinic profile</button></div>
+  </form>
+</section>
+
+<section class="card settings-section" id="doctors">
+  <div class="card-head"><h2>Doctors and availability</h2></div>
+  <p class="affects"><strong>Affects:</strong> which consultation slots can be booked. Saving a doctor rebuilds their open slots from today using these hours, days and consultation length. Existing bookings are kept, and the doctor calendar, booking page and patient assistant show the new times straight away.</p>
+  {% for d in doctors %}
+  <form method="post" action="/settings/doctors/{{ d.id }}" class="form form-inline settings-block" id="doctor-settings-{{ d.id }}">
+    <div class="span-2 doctor-head">{{ initial(d.name) }}<div><strong>{{ d.name }}</strong><span class="muted">{{ d.speciality }}</span>{% if d.is_demo %}<span>{{ awaiting() }}</span>{% endif %}</div></div>
+    <label>Name {{ demo_tag(d) }} <input name="name" value="{{ d.name }}" required maxlength="120"></label>
+    <label>Speciality <input name="speciality" value="{{ d.speciality }}" required maxlength="120"></label>
+    <label>Starts <input name="work_start" type="time" value="{{ d.work_start.strftime('%H:%M') }}" required></label>
+    <label>Ends <input name="work_end" type="time" value="{{ d.work_end.strftime('%H:%M') }}" required></label>
+    <label>Consultation (minutes) <input name="consultation_minutes" type="number" min="5" max="240" step="5" value="{{ d.consultation_minutes }}" required></label>
+    <fieldset class="days">
+      <legend>Working days</legend>
+      {% for name in weekdays %}
+      <label class="check"><input type="checkbox" name="working_days" value="{{ loop.index0 }}" {{ 'checked' if loop.index0 in d.working_day_set }}> {{ name }}{% if loop.index0 in closed_weekdays %} <span class="chip-note">clinic closed</span>{% endif %}</label>
+      {% endfor %}
+    </fieldset>
+    <p class="span-2 muted small">The clinic is closed on {{ closed_weekday_names|join(' and ') }}, so no slots are created for {{ closed_weekday_names|join(' or ') }} even if it is ticked.</p>
+    <div class="span-2"><button class="btn" type="submit">Save {{ d.name }}</button> <a class="btn btn-ghost" href="/doctor/calendar?doctor_id={{ d.id }}">View calendar</a></div>
+  </form>
+  {% endfor %}
+</section>
+
+<section class="card settings-section" id="services">
+  <div class="card-head"><h2>Services and demo fees</h2></div>
+  <p class="affects"><strong>Affects:</strong> the visit types offered when booking (by reception, the patient assistant and the call demo) and the consultation fee quoted to patients. Fees are demo values, not the clinic’s real prices, and no payment is taken.</p>
+  {% for s in services %}
+  <form method="post" action="/settings/services/{{ s.id }}" class="form service-row" id="service-settings-{{ s.id }}">
+    <label>Service {{ demo_tag(s) }} <input name="name" value="{{ s.name }}" required maxlength="120"></label>
+    <label>Fee ({{ clinic.currency_symbol }}) {% if s.is_demo %}{{ awaiting() }}{% endif %} <input name="fee" type="number" min="0" step="1" value="{{ s.fee }}" required></label>
+    <button class="btn" type="submit">Save</button>
+  </form>
+  {% endfor %}
+</section>
+
+<section class="card settings-section" id="schedule">
+  <div class="card-head"><h2>Clinic schedule and closed days</h2><span class="tag">Read-only</span></div>
+  <p class="affects"><strong>Affects:</strong> every booking route. A closed day overrides each doctor’s working days: no slots are created and nothing can be booked, by staff, the patient assistant or the call demo.</p>
+  <dl class="fact-list">
+    <div><dt>Opening hours</dt><dd>{{ clinic_hours }} {{ awaiting() }}</dd></div>
+    <div><dt>Closed every week</dt><dd><strong>{{ closed_weekday_names|join(', ') }}</strong> — shown as “Clinic closed” on booking and calendar pages.</dd></div>
+    <div><dt>Bookable ahead</dt><dd>{{ slot_window_days }} days from today.</dd></div>
+    <div><dt>QR check-in window</dt><dd>On the day of the appointment, until {{ checkin_closes_after }} minutes after its start time.</dd></div>
+  </dl>
+  <p class="muted small">These are set in <code>app/config.py</code> and <code>app/knowledge.py</code> by whoever runs the demo; they are not edited here. To give a single doctor time off, use “Block time” in that doctor’s calendar.</p>
+</section>
+
+<section class="card settings-section" id="demo-data">
+  <div class="card-head"><h2>Demo data</h2></div>
+  <p>This is a demonstration build. Patients, bookings, callbacks, calls, notifications and fees are sample data. No WhatsApp, SMS, phone calls or payments are made, and nothing here is medical advice.</p>
+  <p class="muted small">Do not enter real patient information. Only the clinic name is real; the contact details, doctors, hours and fees are placeholders until the clinic owner approves them. Restoring the sample data is done by the person running the demo, outside the app; there is deliberately no reset control on this page.</p>
+</section>
+{% endblock %}

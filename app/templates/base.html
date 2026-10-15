@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#091D3E">
+  <title>{% block title %}Front Desk{% endblock %} · {{ clinic.name }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..600&family=Instrument+Sans:wght@400..700&display=swap">
+  <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+</head>
+<body>
+  <script>document.documentElement.classList.replace("no-js", "js");</script>
+  {# One menu entry. href comes first: the active state is read from the attributes after it. #}
+  {% macro nav_link(href, key, label, icon, demo=false) %}
+  <a href="{{ href }}" class="nav-link {{ 'is-active' if active == key }}{{ ' is-demo' if demo }}" {% if active == key %}aria-current="page"{% endif %}>
+    <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">{{ icon|safe }}</svg>
+    <span>{{ label }}</span>
+    {% if demo %}<span class="nav-tag" title="Patient-facing demo tool">Demo</span>{% endif %}
+  </a>
+  {% endmacro %}
+  {% set groups = {
+    'reception': ('booking', 'patients', 'checkin', 'waitlist'),
+    'clinical': ('doctor', 'doctor-calendar', 'followups'),
+    'communication': ('notifications',),
+    'insights': ('analytics',),
+  } %}
+  {% macro nav_group(key, label) %}
+  {% set current = active in groups.get(key, ()) %}
+  <details class="nav-group{{ ' has-active' if current }}" data-group="{{ key }}" open>
+    <summary class="nav-group-label"><span>{{ label }}</span><svg class="nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10l4 4 4-4"/></svg></summary>
+    <div class="nav-group-items">{{ caller() }}</div>
+  </details>
+  {% endmacro %}
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="shell">
+    <header class="sidebar">
+      <div class="sidebar-top">
+        <a class="brand" href="/">
+          <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 2.5c-2.7 0-4.7 2-4.7 4.9 0 2 .7 3.3 1.3 5 .5 1.5.6 3.2 1 5 .4 1.9.9 4.1 2.4 4.1 1.7 0 1.5-2.6 2-4.6.3-1.2.8-2.1 1.8-2.1s1.5.9 1.8 2.1c.5 2 .3 4.6 2 4.6 1.5 0 2-2.2 2.4-4.1.4-1.8.5-3.5 1-5 .6-1.7 1.3-3 1.3-5 0-2.9-2-4.9-4.7-4.9-1.9 0-2.8.9-4.8.9s-2.9-.9-4.8-.9z"/></svg>
+          <span class="brand-text">
+            <span class="brand-name">{{ clinic.name }}</span>
+            <span class="brand-sub">Front desk</span>
+          </span>
+          <span class="tag tag-demo">Demo</span>
+        </a>
+        <button class="menu-toggle" type="button" aria-controls="site-nav" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path class="menu-open-icon" d="M4 7h16M4 12h16M4 17h16"/><path class="menu-close-icon" d="M6 6l12 12M18 6L6 18"/></svg>
+          <span class="menu-toggle-label">Menu</span>
+        </button>
+      </div>
+      <nav class="nav" id="site-nav" aria-label="Main">
+        <div class="nav-overview">
+          <p class="nav-group-label is-static">Overview</p>
+          {{ nav_link("/", "dashboard", "Dashboard", '<rect x="3.5" y="3.5" width="7" height="8" rx="1"/><rect x="13.5" y="3.5" width="7" height="5" rx="1"/><rect x="13.5" y="12.5" width="7" height="8" rx="1"/><rect x="3.5" y="15.5" width="7" height="5" rx="1"/>') }}
+        </div>
+        {% call nav_group("reception", "Reception") %}
+          {{ nav_link("/bookings/new", "booking", "Book appointment", '<rect x="3.5" y="5" width="17" height="15.5" rx="1.5"/><path d="M3.5 10h17M8 3v4M16 3v4M12 13v5M9.5 15.5h5"/>') }}
+          {{ nav_link("/patients", "patients", "Patients", '<circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5M16 5.3a3.5 3.5 0 0 1 0 6.4M18.5 14.8c1.7.8 2.7 2.5 3 5.2"/>') }}
+          {{ nav_link("/check-in", "checkin", "QR check-in", '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2.5v2.5H14zM17.5 17.5H20V20h-2.5zM20 14v1M14 20v-1"/>') }}
+          {{ nav_link("/waitlist", "waitlist", "Waitlist", '<path d="M8 6.5h12M8 12h12M8 17.5h8"/><circle cx="4.5" cy="6.5" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="17.5" r="1"/>') }}
+        {% endcall %}
+        {% call nav_group("clinical", "Clinical") %}
+          {{ nav_link("/doctor", "doctor", "Doctor workspace", '<path d="M6 3v6a4 4 0 0 0 8 0V3M10 13v3a4.5 4.5 0 0 0 9 0v-1.5"/><circle cx="19" cy="12.5" r="2"/>') }}
+          {{ nav_link("/doctor/calendar", "doctor-calendar", "Doctor calendar", '<rect x="3.5" y="5" width="17" height="15.5" rx="1.5"/><path d="M3.5 10h17M8 3v4M16 3v4M7.5 13.5h3M7.5 17h3M13.5 13.5h3"/>') }}
+          {{ nav_link("/follow-ups", "followups", "Follow-ups", '<rect x="3.5" y="5" width="17" height="15.5" rx="1.5"/><path d="M3.5 10h17M8 3v4M16 3v4M9 15l2 2 4-4"/>') }}
+        {% endcall %}
+        {% call nav_group("communication", "Communication") %}
+          {{ nav_link("/notifications", "notifications", "Notifications", '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>') }}
+          {{ nav_link("/assistant", "assistant", "Patient assistant", '<path d="M4 5.5h16v10.5H9.5L5.5 19.5V16H4z"/><path d="M8 9.5h8M8 12.5h5"/>', demo=true) }}
+          {{ nav_link("/call-demo", "call-demo", "Call demo", '<path d="M5 4h3.5l1.5 4.5-2 1.5a12 12 0 0 0 6 6l1.5-2 4.5 1.5V19a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>', demo=true) }}
+        {% endcall %}
+        {% call nav_group("insights", "Insights") %}
+          {{ nav_link("/analytics", "analytics", "Analytics", '<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>') }}
+        {% endcall %}
+        <div class="nav-bottom">
+          {{ nav_link("/settings", "settings", "Settings", '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>') }}
+        </div>
+      </nav>
+    </header>
+
+    <div class="main-col">
+      <div class="demo-banner">Demo environment — sample data only. Do not enter real patient information.</div>
+      <main id="main" class="container">
+        {% block breadcrumbs %}{% endblock %}
+        {% if notice %}
+          <div class="alert alert-{{ notice[0] }}" id="page-notice" role="{{ 'alert' if notice[0] == 'error' else 'status' }}">{{ notice[1] }}</div>
+        {% endif %}
+        {% block content %}{% endblock %}
+      </main>
+
+      <footer class="footer">
+        <span>{{ clinic.name }} · {{ clinic.address }} · {{ clinic.phone }}</span>
+        <span>Demo build — clinic details, doctors, fees and records marked “Demo” are sample data.</span>
+      </footer>
+    </div>
+  </div>
+  <script src="{{ asset('js/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

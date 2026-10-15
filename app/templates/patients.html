@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_macros.html" import demo_tag, initial %}
+{% block title %}Patients{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Records</p>
+    <h1>Patients</h1>
+    <p class="muted">Search existing records or register a new patient.</p>
+  </div>
+</div>
+
+<div class="grid-2">
+  <section class="card">
+    <div class="card-head"><h2>{{ 'Search results' if q else 'Recently added' }}</h2></div>
+    <form class="search search-wide" action="/patients" method="get" role="search">
+      <input type="search" name="q" value="{{ q }}" placeholder="Name or mobile number" aria-label="Name or mobile number" autofocus>
+      <button class="btn" type="submit">Search</button>
+      {% if q %}<a class="btn btn-ghost" href="/patients">Clear</a>{% endif %}
+    </form>
+    {% if results %}
+    <ul class="patient-list is-detailed">
+      {% for p in results %}
+      <li>
+        {{ initial(p.name) }}
+        <div class="patient-body">
+          <div class="appt-patient"><a class="timeline-link" href="/patients/{{ p.id }}" title="Open patient record">{{ p.name }}</a> {{ demo_tag(p) }}</div>
+          <dl class="patient-meta">
+            <div><dt>Mobile</dt><dd><a href="tel:{{ p.mobile }}">{{ p.mobile }}</a></dd></div>
+            <div><dt>Email</dt><dd>{{ p.email or '—' }}</dd></div>
+            <div><dt>Registered</dt><dd>{{ p.created_at|fmt_date }}</dd></div>
+            {% if p.notes %}<div class="wide"><dt>Notes</dt><dd>{{ p.notes }}</dd></div>{% endif %}
+          </dl>
+          {% for r in recommendations.get(p.id, []) %}
+          <p class="doctor-flag is-recommendation is-block" title="Entered by the doctor. Read-only.">
+            Doctor recommendation: {{ r.procedure }} · {{ r.status|replace('_', ' ') }}{% if r.followup %} · follow-up booked {{ r.followup.appointment.start_time|fmt_date }} at {{ r.followup.appointment.start_time|fmt_time }}{% endif %}
+            <span>{{ r.doctor.name }}, {{ r.created_at|fmt_date }} · entered by the doctor, read-only</span>
+          </p>
+          {% endfor %}
+        </div>
+        <div class="patient-actions">
+          <a class="btn btn-sm" href="/bookings/new?patient_id={{ p.id }}">Book</a>
+          <a class="btn btn-sm" href="/patients/{{ p.id }}/timeline">View timeline</a>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">No patients match “{{ q }}”. Register them using the form.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Register patient</h2></div>
+    {% if form_error %}
+    <div class="alert alert-error" role="alert">
+      {{ form_error }}
+      {% if duplicate %}<a href="/bookings/new?patient_id={{ duplicate.id }}">Book for {{ duplicate.name }}</a>{% endif %}
+    </div>
+    {% endif %}
+    <form method="post" action="/patients" class="form">
+      <label>Full name <input name="name" value="{{ form.name }}" required maxlength="120"></label>
+      <label>Mobile number <input name="mobile" value="{{ form.mobile }}" required inputmode="tel" maxlength="20"></label>
+      <label>Email <span class="muted">(optional)</span> <input name="email" type="email" value="{{ form.email }}" maxlength="120"></label>
+      <label>Notes <span class="muted">(optional)</span> <textarea name="notes" rows="3">{{ form.notes }}</textarea></label>
+      <button class="btn btn-primary" type="submit">Register patient</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

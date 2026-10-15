@@ -1,0 +1,125 @@
+{% macro demo_tag(record) %}{% if record.is_demo %}<span class="tag tag-demo" title="Seeded sample record">Demo</span>{% endif %}{% endmacro %}
+
+{% macro initial(name) %}<span class="avatar" aria-hidden="true">{{ (name|replace('Dr. ', ''))[:1] }}</span>{% endmacro %}
+
+{% macro appointment_list(items, show_date=false, highlight_id=none, empty="No bookings.", caption="Bookings") %}
+  {% if not items %}
+    <p class="empty">{{ empty }}</p>
+  {% else %}
+  <table class="appt-table" role="table">
+    <caption class="sr-only">{{ caption }}</caption>
+    <thead role="rowgroup">
+      <tr role="row">
+        <th role="columnheader" scope="col">Time</th>
+        <th role="columnheader" scope="col">Patient</th>
+        <th role="columnheader" scope="col">Doctor</th>
+        <th role="columnheader" scope="col">Visit</th>
+        <th role="columnheader" scope="col">Status</th>
+        <th role="columnheader" scope="col"><span class="sr-only">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody role="rowgroup">
+    {% for a in items %}
+    <tr role="row" id="appointment-{{ a.id }}" class="appt {{ 'is-cancelled' if not a.is_active }} {{ 'is-new' if a.id == highlight_id }}">
+      <td role="cell" class="appt-time">
+        {% if show_date %}<span class="appt-date">{{ a.start_time|fmt_date }}</span>{% endif %}
+        <strong>{{ a.start_time|fmt_time }}</strong>
+        <span class="muted">{{ ((a.end_time - a.start_time).total_seconds() // 60)|int }} min</span>
+      </td>
+      <td role="cell" class="appt-main">
+        <div class="appt-patient"><a class="timeline-link" href="/patients/{{ a.patient.id }}/timeline" title="Open patient timeline">{{ a.patient.name }}</a> {{ demo_tag(a) }}</div>
+        <div class="muted">{{ a.patient.mobile }}</div>
+      </td>
+      <td role="cell" class="appt-doctor">{{ a.doctor.name }}</td>
+      <td role="cell" class="appt-reason">{{ a.service.name }}{% if a.reason %} — {{ a.reason }}{% endif %}{{ doctor_notes(a) }}</td>
+      <td role="cell" class="appt-meta">
+        <span class="pill pill-{{ a.status|lower }}">{{ a.status|replace('_', ' ') }}</span>
+        <span class="tag">{{ a.source }}</span>
+      </td>
+      <td role="cell" class="appt-actions">
+        {% if a.status == 'PENDING' %}
+        <form method="post" action="/appointments/{{ a.id }}/status">
+          <input type="hidden" name="status" value="CONFIRMED">
+          <button class="btn btn-sm btn-success" type="submit">Confirm</button>
+        </form>
+        {% endif %}
+        {{ qr_action(a) }}
+        {% if a.can_cancel %}
+        {% call more_menu("More actions for " ~ a.patient.name) %}
+        <form method="post" action="/appointments/{{ a.id }}/status" data-confirm="Cancel this booking for {{ a.patient.name }}? The slot is released for other patients.">
+          <input type="hidden" name="status" value="CANCELLED">
+          <button class="btn btn-sm btn-danger" type="submit">Cancel booking</button>
+        </form>
+        {% endcall %}
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+{% endmacro %}
+
+{# Secondary and destructive actions behind a small "More" menu. The caller's markup goes inside. #}
+{% macro more_menu(label="More actions") %}
+<details class="more-menu">
+  <summary aria-label="{{ label }}" title="{{ label }}">More<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg></summary>
+  <div class="more-menu-items">{{ caller() }}</div>
+</details>
+{% endmacro %}
+
+{# Check-in QR for a confirmed booking that is today or later: generate it once, then view it. #}
+{% macro qr_action(a) %}
+  {% if can_generate_qr(a) %}
+    {% if a.checkin_token %}
+    <a class="btn btn-sm" href="/appointments/{{ a.id }}/checkin-qr">View check-in QR</a>
+    {% else %}
+    <form method="post" action="/appointments/{{ a.id }}/checkin-qr">
+      <button class="btn btn-sm" type="submit">Generate check-in QR</button>
+    </form>
+    {% endif %}
+  {% endif %}
+{% endmacro %}
+
+{# Read-only for reception: what the doctor entered. There is deliberately no edit control here. #}
+{% macro doctor_notes(a) %}
+  {% if a.outcome %}<span class="doctor-flag" title="Entered by the doctor. Read-only.">Next step: {{ next_step_label(a.outcome.next_step) }}</span>{% endif %}
+  {% for r in a.recommendations %}<span class="doctor-flag is-recommendation" title="Entered by the doctor. Read-only.">Doctor recommendation: {{ r.procedure }} · {{ r.status|replace('_', ' ') }}{% if r.followup %} · follow-up {{ r.followup.appointment.start_time|fmt_date }} at {{ r.followup.appointment.start_time|fmt_time }}{% endif %}</span>{% endfor %}
+  {% if a.followup_request %}<span class="doctor-flag is-recommendation" title="Sent by the doctor. Read-only.">Consultation follow-up · {{ a.followup_request.status|replace('_', ' ') }}{% if a.followup_request.followup_appointment %} · booked {{ a.followup_request.followup_appointment.start_time|fmt_date }} at {{ a.followup_request.followup_appointment.start_time|fmt_time }}{% endif %}</span>{% endif %}
+  {% if a.consultation_followup %}<span class="doctor-flag is-followup" title="Booked because the doctor asked for a follow-up consultation.">Consultation follow-up</span>{% endif %}
+  {% if a.followup %}<span class="doctor-flag is-followup" title="Booked from a doctor's recommendation. A discussion appointment, not treatment delivery.">Procedure discussion / follow-up</span>{% endif %}
+{% endmacro %}
+
+{% macro slot_legend(selectable=false) %}
+<ul class="slot-legend" aria-label="Slot key">
+  <li><span class="swatch swatch-available" aria-hidden="true"></span>Available</li>
+  {% if selectable %}<li><span class="swatch swatch-selected" aria-hidden="true"></span>Selected</li>{% endif %}
+  <li><span class="swatch swatch-booked" aria-hidden="true"></span>Booked</li>
+  <li><span class="swatch swatch-past" aria-hidden="true"></span>Past</li>
+</ul>
+{% endmacro %}
+
+{# Small line icons for timeline events. A new event kind only needs an entry here to get its own icon. #}
+{% macro event_icon(name) %}
+<svg class="event-icon" viewBox="0 0 24 24" aria-hidden="true">
+  {% if name == 'person' %}<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.7-3.7 3.4-5.5 7-5.5s6.3 1.8 7 5.5"/>
+  {% elif name == 'call' %}<path d="M5 4h3.5l1.5 4.5-2 1.5a12 12 0 0 0 6 6l1.5-2 4.5 1.5V19a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/><path d="M15 4.5a5 5 0 0 1 4.5 4.5"/>
+  {% elif name == 'callback' %}<path d="M5 4h3.5l1.5 4.5-2 1.5a12 12 0 0 0 6 6l1.5-2 4.5 1.5V19a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/><path d="M20 4l-4.5 4.5M15.5 5v3.5H19"/>
+  {% elif name == 'message' %}<path d="M4 5.5h16v10.5H9.5L5.5 19.5V16H4z"/><path d="M8 9.5h8M8 12.5h5"/>
+  {% elif name == 'list' %}<path d="M8 6.5h12M8 12h12M8 17.5h8"/><circle cx="4.5" cy="6.5" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="17.5" r="1"/>
+  {% elif name == 'qr' %}<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2.5v2.5H14zM17.5 17.5H20V20h-2.5zM20 14v1M14 20v-1"/>
+  {% elif name == 'doctor' %}<path d="M6 3v6a4 4 0 0 0 8 0V3M10 13v3a4.5 4.5 0 0 0 9 0v-1.5"/><circle cx="19" cy="12.5" r="2"/>
+  {% else %}<rect x="3.5" y="5" width="17" height="15.5" rx="1.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>{% endif %}
+</svg>
+{% endmacro %}
+
+{# Page context on deeper screens. `trail` is a list of (label, href or none); the last item is the current page. #}
+{% macro breadcrumbs(trail) %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    {% for label, href in trail %}
+    <li>{% if href and not loop.last %}<a href="{{ href }}">{{ label }}</a>{% else %}<span {% if loop.last %}aria-current="page"{% endif %}>{{ label }}</span>{% endif %}</li>
+    {% endfor %}
+  </ol>
+</nav>
+{% endmacro %}

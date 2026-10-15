@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Follow-ups{% endblock %}
+{% from "_macros.html" import breadcrumbs %}
+{% block breadcrumbs %}{% if selected and selected.status == 'READY_FOR_SCHEDULING' %}{{ breadcrumbs([('Follow-ups', '/follow-ups'), ('Schedule: ' ~ selected.patient.name, none)]) }}{% endif %}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Reception</p>
+    <h1>Procedure follow-ups</h1>
+    <p class="muted">Follow-ups a doctor has sent to reception, waiting to be booked: consultation follow-ups and procedure discussions.</p>
+  </div>
+  <dl class="doctor-counts">
+    <div><dt>Awaiting scheduling</dt><dd>{{ awaiting|length }}</dd></div>
+    <div><dt>Recently scheduled</dt><dd>{{ scheduled|length }}</dd></div>
+  </dl>
+</div>
+
+<p class="doctor-note"><strong>What reception sees.</strong> The patient, the doctor, what kind of follow-up it is and its state. The doctor’s written summary and notes stay in the doctor workspace. A “{{ consultation_label }}” is another consultation with the same doctor. A procedure item is a “{{ followup_label }}” appointment: it is not treatment delivery, and no room, chair, equipment, payment or insurance step is scheduled.</p>
+
+<section class="card" id="awaiting">
+  <div class="card-head"><h2>Ready for scheduling</h2><span class="muted">Sent by the doctor</span></div>
+  {% if awaiting %}
+  <ul class="followup-list">
+    {% for r in awaiting %}
+    <li class="followup {{ 'is-selected' if selected and selected.key == r.key }}" id="{{ 'recommendation' if r.kind == 'procedure' else 'consultation-followup' }}-{{ r.id }}">
+      <div class="followup-who">
+        <span class="followup-procedure">{{ r.label }}</span>
+        <a class="timeline-link" href="/patients/{{ r.patient.id }}/timeline">{{ r.patient.name }}</a>
+        <span class="pill pill-{{ r.status|lower }}">{{ states[r.status] }}</span>
+        <span class="tag">Doctor-approved</span>
+        <span class="muted">{{ r.doctor.name }} · {{ 'recommended' if r.kind == 'procedure' else 'sent by the doctor' }} {{ r.created_at|fmt_date }}</span>
+      </div>
+      <a class="btn btn-sm {{ 'btn-ghost' if selected and selected.key == r.key else 'btn-primary' }}" href="/follow-ups?schedule={{ r.id }}{{ '&kind=consultation' if r.kind == 'consultation' }}#schedule">Schedule follow-up</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">No procedure follow-ups are waiting. They appear here when a doctor sends a consultation follow-up to reception, or marks a recommendation ready for scheduling.</p>
+  {% endif %}
+</section>
+
+{% if selected and selected.status == 'READY_FOR_SCHEDULING' %}
+{% set kind_query = '&kind=consultation' if selected.kind == 'consultation' else '' %}
+<section class="card" id="schedule">
+  <div class="card-head">
+    <h2>Schedule: {{ selected.label }}</h2>
+    <span class="muted">{{ selected.patient.name }} with {{ selected.doctor.name }}</span>
+  </div>
+  <p class="muted small">The follow-up is booked with the doctor who asked for it. Choose a day, then one of {{ selected.doctor.name }}’s free times.</p>
+  <div class="chip-row" role="group" aria-label="Day">
+    {% for d in days %}
+      {% if d in closed_days %}
+      <span class="chip is-closed">{{ d|fmt_date }} <span class="chip-note">Clinic closed</span></span>
+      {% else %}
+      <a class="chip {{ 'is-selected' if d == chosen_day }}" {% if d == chosen_day %}aria-current="date"{% endif %} href="/follow-ups?schedule={{ selected.id }}{{ kind_query }}&date={{ d.isoformat() }}#schedule">{{ 'Today' if d == today else d|fmt_date }}</a>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% if slots %}
+  <form method="post" action="/follow-ups/{{ 'consultation/' if selected.kind == 'consultation' }}{{ selected.id }}/schedule" class="form">
+    <input type="hidden" name="date" value="{{ chosen_day.isoformat() }}">
+    <fieldset class="schedule-fieldset">
+      <legend class="sr-only">Available times on {{ chosen_day|fmt_date }}</legend>
+      <div class="schedule-slots">
+        {% for v in slots %}
+        <label><input type="radio" name="slot_id" value="{{ v.slot.id }}" required> {{ v.slot.start_time|fmt_time }}</label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <label>Scheduling note <span class="muted">(optional, for reception)</span> <input name="note" maxlength="300" placeholder="e.g. patient prefers a call the day before"></label>
+    <div><button class="btn btn-primary" type="submit">Book follow-up</button></div>
+  </form>
+  {% else %}
+  <p class="empty">{{ selected.doctor.name }} has no free consultation times on {{ chosen_day|fmt_date if chosen_day else 'the days currently open for booking' }}. Choose another day.</p>
+  {% endif %}
+</section>
+{% elif selected %}
+<p class="empty" id="schedule">That follow-up is {{ states[selected.status]|lower }}, so there is nothing to schedule for it.</p>
+{% endif %}
+
+<section class="card" id="scheduled">
+  <div class="card-head"><h2>Recently scheduled</h2><span class="muted">Read-only</span></div>
+  {% if scheduled %}
+  <ul class="followup-list">
+    {% for r in scheduled %}
+    <li class="followup">
+      <div class="followup-who">
+        <span class="followup-procedure">{{ r.label }}</span>
+        <a class="timeline-link" href="/patients/{{ r.patient.id }}/timeline">{{ r.patient.name }}</a>
+        <span class="pill pill-{{ r.status|lower }}">{{ states[r.status] }}</span>
+        <span class="muted">{{ r.doctor.name }} · follow-up {{ r.followup_appointment.start_time|fmt_date }} at {{ r.followup_appointment.start_time|fmt_time }} · booking is {{ r.followup_appointment.status|replace('_', ' ')|lower }}</span>
+      </div>
+      <a class="btn btn-sm" href="/#appointment-{{ r.followup_appointment.id }}">Booking #{{ r.followup_appointment.id }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">No follow-ups have been scheduled yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

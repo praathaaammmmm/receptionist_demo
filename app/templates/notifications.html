@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Notification centre{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Reception</p>
+    <h1>Notification centre</h1>
+    <p class="muted">An outbox of confirmations, reminders, cancellations, waitlist offers and callback acknowledgements.</p>
+  </div>
+  <dl class="doctor-counts">
+    <div><dt>Queued</dt><dd>{{ counts.queued }}</dd></div>
+    <div><dt>Sent</dt><dd>{{ counts.sent }}</dd></div>
+    <div><dt>Delivered</dt><dd>{{ counts.delivered }}</dd></div>
+    <div><dt>Failed</dt><dd>{{ counts.failed }}</dd></div>
+  </dl>
+</div>
+
+<p class="simulation-banner" role="note"><strong>Demo notification simulation — no messages are sent.</strong> Nothing on this page reaches WhatsApp, email or any other service. “Send”, “Mark delivered”, “Mark failed” and “Retry” only change the status shown here.</p>
+
+<section class="card">
+  <div class="card-head"><h2>Outbox</h2><span class="muted">{{ items|length }} shown of {{ counts.total }}</span></div>
+  <form class="outbox-filters" method="get" action="/notifications" role="search">
+    <label class="sr-only" for="n-q">Search notifications</label>
+    <input type="search" id="n-q" name="q" value="{{ filters.q }}" placeholder="Search patient, type or message">
+    <label class="sr-only" for="n-status">Status</label>
+    <select id="n-status" name="status"><option value="">Any status</option>{% for s in statuses %}<option value="{{ s }}" {{ 'selected' if filters.status == s }}>{{ s|capitalize }}</option>{% endfor %}</select>
+    <label class="sr-only" for="n-channel">Channel</label>
+    <select id="n-channel" name="channel"><option value="">Any channel</option>{% for code, label in channels.items() %}<option value="{{ code }}" {{ 'selected' if filters.channel == code }}>{{ label }}</option>{% endfor %}</select>
+    <label class="sr-only" for="n-type">Type</label>
+    <select id="n-type" name="type"><option value="">Any type</option>{% for code, label in types.items() %}<option value="{{ code }}" {{ 'selected' if filters.type == code }}>{{ label }}</option>{% endfor %}</select>
+    <button class="btn" type="submit">Filter</button>
+    {% if filters.q or filters.status or filters.channel or filters.type %}<a class="btn btn-ghost" href="/notifications">Clear</a>{% endif %}
+  </form>
+
+  {% if items %}
+  <ul class="outbox">
+    {% for n in items %}
+    <li class="outbox-item" id="n-{{ n.id }}">
+      <div class="outbox-main">
+        <div class="outbox-head">
+          <strong>{{ type_label(n.type) }}</strong>
+          <span class="tag channel-{{ n.channel|lower }}">{{ channels[n.channel] }}</span>
+          <span class="pill pill-{{ n.status|lower }}">{{ n.status }}</span>
+          {% if n.attempts > 1 %}<span class="tag">Attempt {{ n.attempts }}</span>{% endif %}
+        </div>
+        <p class="outbox-to">
+          To {% if n.patient_id %}<a class="timeline-link" href="/patients/{{ n.patient_id }}/timeline">{{ n.recipient_name }}</a>{% else %}{{ n.recipient_name }}{% endif %}
+          <span class="muted">· {{ mask(n.recipient_contact) }} · created {{ 'today' if n.created_at.date() == today else n.created_at|fmt_date }} at {{ n.created_at|fmt_time }}</span>
+        </p>
+        <p class="outbox-related muted">
+          {% if n.appointment_id %}Related: <a href="/#appointment-{{ n.appointment_id }}">Booking #{{ n.appointment_id }}</a>
+          {% elif n.callback_task_id %}Related: <a href="/#callback-tasks">Callback C-{{ n.callback_task_id }}</a>
+          {% elif n.waitlist_entry_id %}Related: <a href="/waitlist">Waitlist W-{{ n.waitlist_entry_id }}</a>{% endif %}
+        </p>
+        <details class="outbox-preview">
+          <summary><span class="preview-label">Preview</span> <span class="preview-snippet">{{ n.message|replace('\n', ' ')|truncate(96) }}</span></summary>
+          <p class="preview-body">{{ n.message }}</p>
+          <p class="muted small">Simulated {{ channels[n.channel] }} message. Not sent.</p>
+        </details>
+      </div>
+      <div class="outbox-actions">
+        {% if n.status == 'QUEUED' %}
+        <form method="post" action="/notifications/{{ n.id }}/send"><button class="btn btn-sm btn-primary" type="submit">Send</button></form>
+        <form method="post" action="/notifications/{{ n.id }}/fail"><button class="btn btn-sm btn-ghost-danger" type="submit">Mark failed</button></form>
+        {% elif n.status == 'SENT' %}
+        <form method="post" action="/notifications/{{ n.id }}/deliver"><button class="btn btn-sm btn-success" type="submit">Mark delivered</button></form>
+        <form method="post" action="/notifications/{{ n.id }}/fail"><button class="btn btn-sm btn-ghost-danger" type="submit">Mark failed</button></form>
+        {% elif n.status == 'FAILED' %}
+        <form method="post" action="/notifications/{{ n.id }}/retry"><button class="btn btn-sm" type="submit">Retry</button></form>
+        {% else %}
+        <span class="muted small">No further action</span>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% elif counts.total %}
+  <p class="empty">No notifications match these filters. <a href="/notifications">Show all</a></p>
+  {% else %}
+  <p class="empty">The outbox is empty. Entries appear when a booking is confirmed or cancelled, a reminder falls due, a waitlist slot is offered or a callback is requested.</p>
+  {% endif %}
+</section>
+
+<p class="doctor-note"><strong>How entries are created.</strong> Confirming a booking queues a confirmation; cancelling queues a cancellation update; a confirmed booking starting within {{ reminder_hours }} hours gets a reminder; marking a waitlist patient as offered queues an offer; a new callback task queues an acknowledgement. Each event produces one entry. Wording comes from the editable templates in <code>app/notification_templates.py</code> and never includes prices or clinical advice.</p>
+{% endblock %}

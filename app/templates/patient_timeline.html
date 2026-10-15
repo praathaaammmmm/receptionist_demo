@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% from "_macros.html" import demo_tag, initial, event_icon, qr_action, breadcrumbs %}
+{% block title %}{{ patient.name if patient else 'Patient' }} · Patient timeline{% endblock %}
+{% block breadcrumbs %}{{ breadcrumbs([('Patients', '/patients'), (patient.name if patient else 'Patient not found', none)]) }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Patient record</p>
+    <h1>{{ patient.name if patient else 'Patient not found' }}</h1>
+    <p class="muted">Details and a read-only history of bookings, calls, callbacks and consultation steps. Demo data only.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-ghost" href="/patients{% if patient %}?q={{ patient.mobile }}{% endif %}">Back to patients</a>
+    {% if patient %}<a class="btn btn-primary" href="/bookings/new?patient_id={{ patient.id }}">Book for this patient</a>{% endif %}
+  </div>
+</div>
+
+{% if patient %}
+<nav class="tabs" aria-label="Patient record sections">
+  <a class="tab" href="#details">Details</a>
+  <a class="tab is-active" href="#timeline">Timeline <span class="tab-count">{{ events|length }}</span></a>
+</nav>
+
+<section class="card" id="details">
+  <div class="card-head"><h2>{{ patient.name }} {{ demo_tag(patient) }}</h2><span class="muted">Details</span></div>
+  <dl class="consult-facts">
+    <div><dt>Mobile</dt><dd><a href="tel:{{ patient.mobile }}">{{ patient.mobile }}</a></dd></div>
+    <div><dt>Email</dt><dd>{{ patient.email or '—' }}</dd></div>
+    <div><dt>Registered</dt><dd>{{ patient.created_at|fmt_date }}</dd></div>
+    <div><dt>Next appointment</dt><dd>{% if next_appointment %}{{ next_appointment.start_time|fmt_date }} at {{ next_appointment.start_time|fmt_time }} · {{ next_appointment.doctor.name }}{% else %}None booked{% endif %}</dd></div>
+    <div><dt>Open callbacks</dt><dd>{{ open_callbacks|length }}</dd></div>
+    {% if patient.notes %}<div><dt>Reception notes</dt><dd>{{ patient.notes }}</dd></div>{% endif %}
+  </dl>
+  {% if qr_bookings %}
+  <ul class="qr-bookings" aria-label="Confirmed bookings that can have a check-in QR">
+    {% for a in qr_bookings %}
+    <li>
+      <span><strong>{{ a.start_time|fmt_date }} at {{ a.start_time|fmt_time }}</strong> · {{ a.service.name }} with {{ a.doctor.name }} <span class="pill pill-confirmed">CONFIRMED</span></span>
+      {{ qr_action(a) }}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% for r in recommendations %}
+  <p class="doctor-flag is-recommendation is-block" title="Entered by the doctor. Read-only.">
+    Doctor recommendation: {{ r.procedure }} · {{ r.status|replace('_', ' ') }}{% if r.followup %} · follow-up booked {{ r.followup.appointment.start_time|fmt_date }} at {{ r.followup.appointment.start_time|fmt_time }}{% endif %}
+    <span>{{ r.doctor.name }}, {{ r.created_at|fmt_date }} · entered by the doctor, read-only</span>
+  </p>
+  {% endfor %}
+</section>
+
+<section class="card" id="timeline">
+  <div class="card-head">
+    <h2>Timeline</h2>
+    <ul class="timeline-key" aria-label="Who recorded each event">
+      <li><span class="source-chip src-staff">Staff</span></li>
+      <li><span class="source-chip src-website_ai">Website AI</span></li>
+      <li><span class="source-chip src-voice_demo">Voice Demo</span></li>
+      <li><span class="source-chip src-doctor">Doctor</span></li>
+    </ul>
+  </div>
+  <p class="doctor-note"><strong>Reception view.</strong> Doctor entries show only the next step and the recommended procedure. The doctor’s consultation summary and notes are kept in the doctor workspace and are not shown here.</p>
+  {% if not has_activity %}
+  <p class="empty">No activity yet for {{ patient.name }}. Bookings, callback requests, simulated calls and consultation steps will appear here as they happen. <a href="/bookings/new?patient_id={{ patient.id }}">Create a booking</a></p>
+  {% endif %}
+  <ol class="timeline" reversed>
+    {% for e in events %}
+    <li class="timeline-item src-{{ e.source|lower }}">
+      <span class="timeline-icon">{{ event_icon(e.icon) }}</span>
+      <div class="timeline-when">
+        {% if e.approximate %}
+        <strong>Time not recorded</strong><span>changed before the timeline was added</span>
+        {% else %}
+        <strong><time datetime="{{ e.at.isoformat() }}">{{ 'Today' if e.at.date() == today else e.at|fmt_date }}</time></strong><span>{{ e.at|fmt_time }}</span>
+        {% endif %}
+      </div>
+      <div class="timeline-what">
+        <h3>{{ e.title }} <span class="source-chip src-{{ e.source|lower }}">{{ e.source_label }}</span>{% if e.status %} <span class="pill pill-{{ e.status|lower }}">{{ e.status|replace('_', ' ') }}</span>{% endif %}</h3>
+        {% if e.detail %}<p>{{ e.detail }}</p>{% endif %}
+        {% if e.link %}<p class="timeline-ref"><a href="{{ e.link }}">{{ e.link_label }}</a></p>
+        {% elif e.link_label %}<p class="timeline-ref muted">{{ e.link_label }}</p>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% else %}
+<p class="empty">That patient record does not exist. <a href="/patients">Search patients</a>.</p>
+{% endif %}
+{% endblock %}

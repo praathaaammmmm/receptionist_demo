@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% from "_macros.html" import demo_tag, initial, slot_legend %}
+{% block title %}Create booking{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">New appointment</p>
+    <h1>Create booking</h1>
+    <p class="muted">New bookings are saved as PENDING until confirmed from the dashboard.</p>
+  </div>
+  <div class="page-actions"><a class="btn btn-ghost" href="/availability">See all open slots</a></div>
+</div>
+
+<div id="booking" class="booking">
+  <section class="card">
+    <div class="card-head"><h2><span class="step">1</span> Patient</h2></div>
+    <div id="patient-selected" class="selected-patient" hidden></div>
+    <div id="patient-picker">
+      <div class="search search-wide">
+        <input type="search" id="patient-search" placeholder="Search by name or mobile number" aria-label="Search patients by name or mobile number" autocomplete="off">
+        <button class="btn btn-ghost" type="button" id="new-patient-toggle">+ New patient</button>
+      </div>
+      <ul id="patient-results" class="patient-list"></ul>
+      <form id="new-patient-form" class="form form-inline" hidden>
+        <div id="new-patient-alert" class="alert alert-error" role="alert" hidden></div>
+        <label>Full name <input name="name" required maxlength="120"></label>
+        <label>Mobile number <input name="mobile" required inputmode="tel" maxlength="20"></label>
+        <label>Email <span class="muted">(optional)</span> <input name="email" type="email" maxlength="120"></label>
+        <label>Notes <span class="muted">(optional)</span> <input name="notes"></label>
+        <button class="btn btn-primary" type="submit">Save patient</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2><span class="step">2</span> Doctor and date</h2></div>
+    <div class="choice-row" role="radiogroup" aria-label="Doctor">
+      {% for d in doctors %}
+      <label class="choice">
+        <input type="radio" name="doctor" value="{{ d.id }}" {{ 'checked' if d.id == init.doctorId }}>
+        {{ initial(d.name) }}
+        <span class="choice-body">
+          <strong>{{ d.name }}</strong> {{ demo_tag(d) }}
+          <span class="muted">{{ d.speciality }} · {{ d.consultation_minutes }} min</span>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="chip-row" role="radiogroup" aria-label="Date">
+      {% for d in days %}
+      <label class="chip {{ 'is-closed' if d in closed_days }}">
+        <input type="radio" name="date" value="{{ d.isoformat() }}" {{ 'checked' if d.isoformat() == init.date }} {{ 'disabled' if d in closed_days }}>
+        {{ 'Today' if d == today else d|fmt_date }}{% if d in closed_days %} <span class="chip-note">Clinic closed</span>{% endif %}
+      </label>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2><span class="step">3</span> Time slot</h2><span class="muted" id="slot-summary"></span></div>
+    {{ slot_legend(selectable=true) }}
+    <div id="slots" class="slot-grid" aria-live="polite"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2><span class="step">4</span> Visit details</h2></div>
+    <div class="form form-inline">
+      <label>Reason for visit
+        <select id="service">
+          {% for s in services %}
+          <option value="{{ s.id }}">{{ s.name }} — consultation fee {{ clinic.currency_symbol }}{{ s.fee }} (demo)</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Booking source
+        <select id="source">
+          {% for s in sources %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="span-2">Notes for the visit <span class="muted">(optional)</span>
+        <input id="reason" maxlength="500" placeholder="e.g. first visit, prefers morning">
+      </label>
+    </div>
+  </section>
+
+  <section class="card booking-submit" aria-label="Booking summary">
+    <p class="eyebrow">Your booking</p>
+    <div id="booking-alert" class="alert alert-error" role="alert" hidden></div>
+    <p id="booking-summary" class="muted">Choose a patient and a time slot to continue.</p>
+    <div class="page-actions">
+      <a class="btn btn-ghost" href="/">Back to dashboard</a>
+      <button class="btn btn-primary" id="booking-submit" type="button" disabled>Create booking</button>
+    </div>
+  </section>
+</div>
+<script type="application/json" id="booking-init">{{ init|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="{{ asset('js/booking.js') }}"></script>{% endblock %}

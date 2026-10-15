@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Analytics{% endblock %}
+{# One bar row: label, a thin single-colour bar from a common baseline, the value at the tip. #}
+{% macro bar_rows(rows, max_value=none, unit="", share_of=none) %}
+  {% set top = max_value if max_value is not none else (rows|map(attribute='value')|max) %}
+  <ul class="bars">
+    {% for r in rows %}
+    <li class="bar-row" title="{{ r.label }}: {{ r.value }}{% if share_of %} ({{ r.share }}% of {{ share_of }}){% elif unit %} {{ unit }}{% endif %}">
+      <span class="bar-label">{{ r.label }}</span>
+      <span class="bar-track"><span class="bar-fill" style="width: {{ (100 * r.value / top)|round(1) if top else 0 }}%"></span></span>
+      <span class="bar-value">{{ r.value }}{% if share_of %} <span class="bar-share">{{ r.share }}%</span>{% endif %}</span>
+    </li>
+    {% endfor %}
+  </ul>
+{% endmacro %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Owner view</p>
+    <h1>Analytics</h1>
+    <p class="muted">How enquiries and bookings move through the clinic journey. Aggregated counts only.</p>
+  </div>
+  <nav class="range-filter" aria-label="Period">
+    {% for key, label in ranges.items() %}
+    <a class="chip {{ 'is-selected' if data.range == key }}" {% if data.range == key %}aria-current="true"{% endif %} href="/analytics?range={{ key }}">{{ label }}</a>
+    {% endfor %}
+  </nav>
+</div>
+
+<p class="simulation-banner" role="note"><strong>Demo analytics — sample data only.</strong> Every figure is counted from the demo’s own sample records for “{{ data.range_label }}”. These are not real clinic results, and the percentages are not real conversion rates.</p>
+
+<section class="stats" aria-label="Headline counts, sample data">
+  <div class="stat"><span class="stat-label">Bookings created</span><span class="stat-value">{{ data.headline.bookings }}</span><span class="stat-note">in this period, all sources</span></div>
+  <div class="stat"><span class="stat-label">Consultations completed</span><span class="stat-value">{{ data.headline.completed }}</span><span class="stat-note">of those bookings, so far</span></div>
+  <div class="stat"><span class="stat-label">Open callback tasks</span><span class="stat-value">{{ data.headline.open_callbacks }}</span><span class="stat-note">created in this period</span></div>
+  <div class="stat"><span class="stat-label">Simulated AI calls</span><span class="stat-value">{{ data.headline.ai_calls }}</span><span class="stat-note">started in this period</span></div>
+</section>
+
+<section class="card" id="funnel">
+  <div class="card-head"><h2>Appointment funnel</h2><span class="muted">Sample data · bookings created in “{{ data.range_label }}”</span></div>
+  {% if data.headline.bookings %}
+  <p class="muted small">Of the bookings created in this period, how many have so far reached each stage. No-shows and cancellations are where a booking ended instead.</p>
+  {{ bar_rows(data.funnel, max_value=data.headline.bookings, unit="bookings", share_of="bookings created") }}
+  {% else %}
+  <p class="empty">No bookings were created in this period, so there is no funnel to show. Try “All demo data”.</p>
+  {% endif %}
+</section>
+
+<section class="card" id="sources">
+  <div class="card-head"><h2>Bookings by source</h2><span class="muted">Sample data · where each booking came from and how far it has got</span></div>
+  {% if data.headline.bookings %}
+  <table class="appt-table metric-table" role="table">
+    <caption class="sr-only">Bookings and outcomes by source, sample data</caption>
+    <thead role="rowgroup"><tr role="row">
+      <th role="columnheader" scope="col">Source</th><th role="columnheader" scope="col" class="num">Bookings</th>
+      <th role="columnheader" scope="col" class="num">Confirmed</th><th role="columnheader" scope="col" class="num">Arrived</th>
+      <th role="columnheader" scope="col" class="num">Completed</th><th role="columnheader" scope="col" class="num">No-show</th>
+      <th role="columnheader" scope="col" class="num">Cancelled</th>
+    </tr></thead>
+    <tbody role="rowgroup">
+      {% for s in data.sources %}
+      <tr role="row" class="appt" title="{{ s.label }}: {{ s.created }} bookings ({{ s.share }}% of bookings created)">
+        <th role="rowheader" scope="row" class="metric-source">
+          <span>{{ s.label }}</span>
+          <span class="bar-track"><span class="bar-fill" style="width: {{ s.share }}%"></span></span>
+        </th>
+        <td role="cell" class="num"><strong>{{ s.created }}</strong> <span class="bar-share">{{ s.share }}%</span></td>
+        <td role="cell" class="num">{{ s.confirmed }}</td><td role="cell" class="num">{{ s.arrived }}</td>
+        <td role="cell" class="num">{{ s.completed }}</td><td role="cell" class="num">{{ s.no_show }}</td><td role="cell" class="num">{{ s.cancelled }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No bookings in this period to break down by source.</p>
+  {% endif %}
+</section>
+
+<div class="metric-grid">
+  <section class="card">
+    <div class="card-head"><h2>Callback tasks</h2><span class="muted">Sample data</span></div>
+    {% if data.callbacks|sum(attribute='value') %}{{ bar_rows(data.callbacks, unit="tasks") }}
+    {% else %}<p class="empty">No callback tasks were created in this period.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>AI call outcomes</h2><span class="muted">Simulated calls · sample data</span></div>
+    {% if data.calls.total %}{{ bar_rows(data.calls.outcomes, unit="calls") }}
+    {% if data.calls.in_progress %}<p class="muted small">{{ data.calls.in_progress }} call{{ 's' if data.calls.in_progress != 1 }} still in progress and not counted above.</p>{% endif %}
+    {% else %}<p class="empty">No simulated calls were started in this period.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Waitlist</h2><span class="muted">Sample data</span></div>
+    {% if data.waitlist|sum(attribute='value') %}{{ bar_rows(data.waitlist, unit="entries") }}
+    {% else %}<p class="empty">Nobody joined the waitlist in this period.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Notifications</h2><span class="muted">Simulated · none are sent</span></div>
+    {% if data.notifications|sum(attribute='value') %}{{ bar_rows(data.notifications, unit="notifications") }}
+    {% else %}<p class="empty">No notifications were queued in this period.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Arrivals and QR check-in</h2><span class="muted">Sample data</span></div>
+    {% if data.checkin.arrivals %}
+    {{ bar_rows([{'label': 'Arrivals recorded', 'value': data.checkin.arrivals, 'share': 100}, {'label': 'Checked in by QR', 'value': data.checkin.qr_checkins, 'share': data.checkin.qr_share}, {'label': 'Marked arrived another way', 'value': data.checkin.other_arrivals, 'share': 100 - data.checkin.qr_share}], max_value=data.checkin.arrivals, unit="arrivals", share_of="arrivals") }}
+    {% else %}<p class="empty">No patient arrivals were recorded in this period.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Doctor consultations</h2><span class="muted">Counts only · sample data</span></div>
+    {% if data.doctor.outcomes or data.doctor.recommendations_drafted %}
+    <dl class="doctor-counts">
+      <div><dt>Outcomes recorded</dt><dd>{{ data.doctor.outcomes }}</dd></div>
+      <div><dt>Draft recommendations</dt><dd>{{ data.doctor.recommendations_drafted }}</dd></div>
+    </dl>
+    {% if data.doctor.outcomes %}{{ bar_rows(data.doctor.next_steps, unit="outcomes") }}{% endif %}
+    <p class="muted small">Next-step categories only. Doctors’ written summaries and notes are never used here.</p>
+    {% else %}<p class="empty">No consultation outcomes or draft recommendations were recorded in this period.</p>{% endif %}
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>Procedure follow-ups</h2><span class="muted">Counts only · sample data</span></div>
+    {% if data.followups.states|sum(attribute='value') %}
+    {{ bar_rows(data.followups.states, unit="recommendations") }}
+    <p class="muted small">{{ data.followups.booked }} follow-up appointment{{ 's' if data.followups.booked != 1 }} booked in this period. These are discussion appointments, not treatments carried out.</p>
+    {% else %}<p class="empty">No doctor recommendations were recorded in this period.</p>{% endif %}
+    <h3 class="metric-subhead">Consultation follow-ups</h3>
+    {% if data.followups.consultation.requested %}
+    {{ bar_rows([{'label': 'Sent to reception', 'value': data.followups.consultation.requested}, {'label': 'Awaiting scheduling', 'value': data.followups.consultation.awaiting}, {'label': 'Scheduled', 'value': data.followups.consultation.scheduled}], max_value=data.followups.consultation.requested, unit="follow-ups") }}
+    {% else %}<p class="empty">No consultation follow-ups were sent to reception in this period.</p>{% endif %}
+  </section>
+</div>
+
+<section class="card" id="definitions">
+  <div class="card-head"><h2>How these figures are calculated</h2></div>
+  <dl class="definitions">
+    <div><dt>Period</dt><dd>“Today” is the current day. “This week” is Monday to Sunday of the current week. “All demo data” is everything stored in the demo.</dd></div>
+    <div><dt>Appointment funnel</dt><dd>Starts from bookings <em>created</em> in the period, whatever day the appointment itself is on. Confirmed, arrived and completed count bookings that have reached that stage at any point so far. No-shows and cancellations count bookings currently in that state. Shares are a percentage of the bookings created.</dd></div>
+    <div><dt>Source</dt><dd>Waitlist replacement: the booking was made from a waitlist entry. Voice demo: a simulated call log is linked to the booking. Website AI assistant: made by the assistant with no linked call. Staff: made at reception. Website form (sample) appears only for the seeded sample booking marked as coming from a web form.</dd></div>
+    <div><dt>Callbacks, calls, waitlist, notifications</dt><dd>Records created (calls: started) in the period, grouped by their current status or outcome. Calls and notifications are simulations.</dd></div>
+    <div><dt>Arrivals and QR check-in</dt><dd>Arrival and QR check-in events recorded in the period. Arrivals recorded before the patient timeline existed are not included.</dd></div>
+    <div><dt>Doctor consultations</dt><dd>Outcomes and draft recommendations recorded in the period, counted by fixed category.</dd></div>
+    <div><dt>Procedure follow-ups</dt><dd>Doctor recommendations created in the period, by their current state (draft, ready for scheduling, scheduled), and follow-up appointments booked in the period. No procedure names or notes are shown. Consultation follow-ups are requests a doctor sent to reception in the period, and how many of those are still waiting or have been scheduled.</dd></div>
+    <div><dt>What is not here</dt><dd>No revenue, satisfaction, forecast or real conversion figures: the demo does not record them, so none are shown. No patient is identified anywhere on this page.</dd></div>
+  </dl>
+</section>
+{% endblock %}
