@@ -41,6 +41,7 @@ def create_callback(
     email: str | None = None,
     source: str = "AI_DEMO",
     notes: str | None = None,
+    acknowledge: bool = True,
 ) -> CallbackTask:
     name = _clean(name, 120)
     if not name:
@@ -74,11 +75,13 @@ def create_callback(
     )
     db.add(task)
     db.flush()  # the task needs its id before the acknowledgement can refer to it
-    # Simulated acknowledgement in the outbox (never sent).
-    notifications.queue(
-        db, "CALLBACK_ACKNOWLEDGEMENT", key=f"callback:{task.id}", name=task.name, mobile=task.mobile, email=task.email,
-        patient_id=notifications.patient_id_for_mobile(db, task.mobile), callback_task_id=task.id,
-    )
+    # Simulated acknowledgement in the outbox (never sent). Not for a callback the doctor asked
+    # reception to make: the patient did not request it.
+    if acknowledge:
+        notifications.queue(
+            db, "CALLBACK_ACKNOWLEDGEMENT", key=f"callback:{task.id}", name=task.name, mobile=task.mobile, email=task.email,
+            patient_id=notifications.patient_id_for_mobile(db, task.mobile), callback_task_id=task.id,
+        )
     db.commit()
     return task
 

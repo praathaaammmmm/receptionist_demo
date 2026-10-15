@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Follow-ups{% endblock %}
-{% from "_macros.html" import breadcrumbs %}
+{% from "_macros.html" import breadcrumbs, reception_flags %}
 {% block breadcrumbs %}{% if selected and selected.status == 'READY_FOR_SCHEDULING' %}{{ breadcrumbs([('Follow-ups', '/follow-ups'), ('Schedule: ' ~ selected.patient.name, none)]) }}{% endif %}{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -29,6 +29,8 @@
         <span class="pill pill-{{ r.status|lower }}">{{ states[r.status] }}</span>
         <span class="tag">Doctor-approved</span>
         <span class="muted">{{ r.doctor.name }} · {{ 'recommended' if r.kind == 'procedure' else 'sent by the doctor' }} {{ r.created_at|fmt_date }}</span>
+        {% if r.preference and r.preference.summary %}<span class="followup-pref">Doctor’s preference: {{ r.preference.summary }}</span>{% endif %}
+        {{ reception_flags(r.patient) }}
       </div>
       <a class="btn btn-sm {{ 'btn-ghost' if selected and selected.key == r.key else 'btn-primary' }}" href="/follow-ups?schedule={{ r.id }}{{ '&kind=consultation' if r.kind == 'consultation' }}#schedule">Schedule follow-up</a>
     </li>
@@ -47,6 +49,8 @@
     <span class="muted">{{ selected.patient.name }} with {{ selected.doctor.name }}</span>
   </div>
   <p class="muted small">The follow-up is booked with the doctor who asked for it. Choose a day, then one of {{ selected.doctor.name }}’s free times.</p>
+  {% if selected.preference and selected.preference.summary %}<p class="followup-pref">Doctor’s preference: {{ selected.preference.summary }}. Slots keep {{ selected.doctor.name }}’s standard length; tell the doctor if the preferred length matters.</p>{% endif %}
+  {{ reception_flags(selected.patient, block=true) }}
   <div class="chip-row" role="group" aria-label="Day">
     {% for d in days %}
       {% if d in closed_days %}

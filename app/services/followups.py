@@ -24,6 +24,7 @@ from ..models import (
     CONSULTATION_FOLLOWUP_LABEL,
     FOLLOWUP_LABEL,
     RECOMMENDATION_DRAFT,
+    FOLLOWUP_OPEN_STATES,
     RECOMMENDATION_READY,
     RECOMMENDATION_SCHEDULED,
     SOURCE_STAFF,
@@ -38,7 +39,7 @@ from ..models import (
     TimelineEvent,
     TreatmentRecommendation,
 )
-from . import appointments
+from . import appointments, notifications
 from .errors import NotFoundError, ValidationError
 
 
@@ -59,7 +60,7 @@ def get_recommendation(db: Session, recommendation_id: int) -> TreatmentRecommen
 
 def awaiting(db: Session) -> list[TreatmentRecommendation]:
     """Recommendations the doctor has released and reception has not yet booked, oldest first."""
-    stmt = _with_details().where(TreatmentRecommendation.status == RECOMMENDATION_READY).order_by(TreatmentRecommendation.id)
+    stmt = _with_details().where(TreatmentRecommendation.status.in_(FOLLOWUP_OPEN_STATES)).order_by(TreatmentRecommendation.id)
     return list(db.scalars(stmt))
 
 
@@ -74,7 +75,7 @@ def recently_scheduled(db: Session, limit: int = 8) -> list[TreatmentRecommendat
 
 
 def awaiting_count(db: Session) -> int:
-    return len(db.scalars(select(TreatmentRecommendation.id).where(TreatmentRecommendation.status == RECOMMENDATION_READY)).all())
+    return len(db.scalars(select(TreatmentRecommendation.id).where(TreatmentRecommendation.status.in_(FOLLOWUP_OPEN_STATES))).all())
 
 
 def service_for(db: Session, procedure: str) -> Service:
@@ -92,7 +93,7 @@ def schedule(db: Session, recommendation_id: int, slot_id: int, staff_note: str 
         raise ValidationError("The doctor has not marked this recommendation ready for scheduling yet.")
     if recommendation.status == RECOMMENDATION_SCHEDULED or recommendation.followup is not None:
         raise ValidationError("A follow-up is already booked for this recommendation.")
-    if recommendation.status != RECOMMENDATION_READY:
+    if recommendation.status not in FOLLOWUP_OPEN_STATES:
         raise ValidationError("This recommendation cannot be scheduled.")
     slot = db.get(Slot, slot_id)
     if slot is None:
@@ -116,6 +117,7 @@ def schedule(db: Session, recommendation_id: int, slot_id: int, staff_note: str 
     recommendation = get_recommendation(db, recommendation_id)
     db.add(ProcedureFollowup(recommendation_id=recommendation.id, appointment_id=appointment.id, staff_note=note or None))
     recommendation.status = RECOMMENDATION_SCHEDULED
+    notifications.queue_for_appointment(db, "FOLLOWUP_BOOKED", appointment)
     db.add(
         TimelineEvent(
             kind="FOLLOWUP_SCHEDULED", source=SOURCE_STAFF, occurred_at=utils.now(), patient_id=recommendation.patient_id,
@@ -153,7 +155,7 @@ def get_request(db: Session, request_id: int) -> ConsultationFollowup:
 
 
 def consultation_awaiting(db: Session) -> list[ConsultationFollowup]:
-    stmt = _requests().where(ConsultationFollowup.status == RECOMMENDATION_READY).order_by(ConsultationFollowup.id)
+    stmt = _requests().where(ConsultationFollowup.status.in_(FOLLOWUP_OPEN_STATES)).order_by(ConsultationFollowup.id)
     return list(db.scalars(stmt))
 
 
@@ -172,7 +174,7 @@ def schedule_consultation(db: Session, request_id: int, slot_id: int, staff_note
     request = get_request(db, request_id)
     if request.status == RECOMMENDATION_SCHEDULED or request.followup_appointment_id is not None:
         raise ValidationError("A follow-up is already booked for this request.")
-    if request.status != RECOMMENDATION_READY:
+    if request.status not in FOLLOWUP_OPEN_STATES:
         raise ValidationError("This follow-up request cannot be scheduled.")
     slot = db.get(Slot, slot_id)
     if slot is None:
@@ -191,6 +193,7 @@ def schedule_consultation(db: Session, request_id: int, slot_id: int, staff_note
     )
     request = get_request(db, request_id)
     request.status = RECOMMENDATION_SCHEDULED
+    notifications.queue_for_appointment(db, "FOLLOWUP_BOOKED", appointment)
     request.followup_appointment_id = appointment.id
     request.staff_note = note or None
     db.add(
@@ -225,6 +228,7 @@ class WorkItem:
     status: str
     created_at: datetime
     followup_appointment: Appointment | None
+    preference: object | None = None  # the doctor's preferred length and timing (consultation follow-ups only)
 
     @property
     def key(self) -> str:
@@ -234,7 +238,7 @@ class WorkItem:
 def _item(record) -> WorkItem:
     if isinstance(record, ConsultationFollowup):
         return WorkItem("consultation", record.id, CONSULTATION_FOLLOWUP_LABEL, record.patient, record.doctor, record.status,
-                        record.created_at, record.followup_appointment)
+                        record.created_at, record.followup_appointment, record)
     return WorkItem("procedure", record.id, record.procedure, record.patient, record.doctor, record.status, record.created_at,
                     record.followup.appointment if record.followup else None)
 
@@ -254,4 +258,4 @@ def work_item(db: Session, kind: str, item_id: int) -> WorkItem:
 
 
 def consultation_awaiting_count(db: Session) -> int:
-    return len(db.scalars(select(ConsultationFollowup.id).where(ConsultationFollowup.status == RECOMMENDATION_READY)).all())
+    return len(db.scalars(select(ConsultationFollowup.id).where(ConsultationFollowup.status.in_(FOLLOWUP_OPEN_STATES))).all())

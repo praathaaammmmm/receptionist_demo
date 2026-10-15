@@ -63,6 +63,11 @@ EVENT_TITLES = {
     "RECOMMENDATION_DRAFTED": "Doctor recommendation drafted",
     "RECOMMENDATION_READY": "Doctor marked recommendation ready",
     "FOLLOWUP_REQUESTED": "Doctor sent follow-up to reception",
+    "CONSULTATION_STARTED": "Consultation started",
+    "PATIENT_FLAG_SET": "Doctor flag set",
+    "PATIENT_FLAG_CLEARED": "Doctor flag cleared",
+    "DOCTOR_CALLBACK_REQUESTED": "Doctor asked reception to call",
+    "FOLLOWUP_CLOSED": "Doctor closed follow-up request",
     "FOLLOWUP_SCHEDULED": "Procedure follow-up scheduled",
     "CONSULTATION_FOLLOWUP_SCHEDULED": "Consultation follow-up scheduled",
 }
@@ -91,7 +96,8 @@ def _icon(kind: str) -> str:
         return "message"
     if kind.startswith("CALLBACK"):
         return "callback"
-    if kind in ("OUTCOME_RECORDED", "RECOMMENDATION_DRAFTED", "RECOMMENDATION_READY", "FOLLOWUP_REQUESTED"):
+    if kind in ("OUTCOME_RECORDED", "RECOMMENDATION_DRAFTED", "RECOMMENDATION_READY", "FOLLOWUP_REQUESTED", "CONSULTATION_STARTED",
+                "PATIENT_FLAG_SET", "PATIENT_FLAG_CLEARED", "FOLLOWUP_CLOSED", "DOCTOR_CALLBACK_REQUESTED"):
         return "doctor"
     return "calendar"  # appointments, and a sensible default for kinds added later
 

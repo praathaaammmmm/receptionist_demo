@@ -83,11 +83,23 @@
 
 {# Read-only for reception: what the doctor entered. There is deliberately no edit control here. #}
 {% macro doctor_notes(a) %}
+  {{ reception_flags(a.patient) }}
   {% if a.outcome %}<span class="doctor-flag" title="Entered by the doctor. Read-only.">Next step: {{ next_step_label(a.outcome.next_step) }}</span>{% endif %}
   {% for r in a.recommendations %}<span class="doctor-flag is-recommendation" title="Entered by the doctor. Read-only.">Doctor recommendation: {{ r.procedure }} · {{ r.status|replace('_', ' ') }}{% if r.followup %} · follow-up {{ r.followup.appointment.start_time|fmt_date }} at {{ r.followup.appointment.start_time|fmt_time }}{% endif %}</span>{% endfor %}
   {% if a.followup_request %}<span class="doctor-flag is-recommendation" title="Sent by the doctor. Read-only.">Consultation follow-up · {{ a.followup_request.status|replace('_', ' ') }}{% if a.followup_request.followup_appointment %} · booked {{ a.followup_request.followup_appointment.start_time|fmt_date }} at {{ a.followup_request.followup_appointment.start_time|fmt_time }}{% endif %}</span>{% endif %}
   {% if a.consultation_followup %}<span class="doctor-flag is-followup" title="Booked because the doctor asked for a follow-up consultation.">Consultation follow-up</span>{% endif %}
   {% if a.followup %}<span class="doctor-flag is-followup" title="Booked from a doctor's recommendation. A discussion appointment, not treatment delivery.">Procedure discussion / follow-up</span>{% endif %}
+{% endmacro %}
+
+{# Doctor-set operational flags, as reception sees them: the name and its plain meaning, never a reason. #}
+{% macro reception_flags(patient, block=false) %}
+  {% for f in patient.flags if f.active %}
+  {% if block %}
+  <p class="doctor-flag is-flag is-block">Doctor flag: {{ f.label }}<span>{{ f.meaning }} Set by {{ f.doctor.name }}.</span></p>
+  {% else %}
+  <span class="doctor-flag is-flag" title="{{ f.meaning }} Set by {{ f.doctor.name }}.">Doctor flag: {{ f.label }}</span>
+  {% endif %}
+  {% endfor %}
 {% endmacro %}
 
 {% macro slot_legend(selectable=false) %}

@@ -129,6 +129,10 @@ def set_status(db: Session, appointment_id: int, new_status: str, actor: str = S
         notifications.queue_for_appointment(db, "APPOINTMENT_CONFIRMATION", appointment)
     elif new_status == STATUS_CANCELLED:
         notifications.queue_for_appointment(db, "APPOINTMENT_CANCELLATION", appointment)
+    # A follow-up or procedure plan booked into this appointment moves with it (completed, or reopened).
+    from . import care_queue  # local import: care_queue builds on this module
+
+    care_queue.on_appointment_status(db, appointment, new_status)
     db.commit()
     return appointment
 

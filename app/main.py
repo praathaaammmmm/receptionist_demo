@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import sessionmaker
 
 from . import config, utils
-from .database import Base, make_engine
+from .database import Base, add_missing_columns, make_engine, upgrade_data
 from .ratelimit import RateLimiter
 from .routes import analytics, api, assistant, calls, checkin, doctor, followups, notifications, pages, waitlist
 from .seed import seed_if_empty
@@ -22,6 +22,8 @@ def create_app(database_url: str | None = None) -> FastAPI:
     session_factory = sessionmaker(bind=engine, expire_on_commit=False)
 
     Base.metadata.create_all(engine)
+    add_missing_columns(engine)
+    upgrade_data(engine)
     with session_factory() as db:
         seed_if_empty(db)
         availability.ensure_slots(db)

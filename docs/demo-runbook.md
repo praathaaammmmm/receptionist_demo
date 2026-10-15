@@ -123,7 +123,9 @@ clinical decision."*
 2. Click **Doctor workspace** in the left menu and choose that booking's doctor.
    - **See:** the patient on today's list with status **CONFIRMED**. Unconfirmed bookings are not
      listed; reception confirms them first.
-3. Press **Mark arrived** (confirm), type a one-line summary, choose a next step and press **Save outcome**.
+3. In the **Next patient** card press **Mark arrived** (confirm), then **Start consultation**.
+   **See:** the consultation opens at the stage "In consultation". Type a one-line summary, choose
+   a next step and press **Save outcome**.
 4. Press **Mark completed** and confirm. Under "Draft treatment recommendation" choose a procedure and press
    **Save draft recommendation**.
    - **See:** the recommendation listed with a **DRAFT** label.

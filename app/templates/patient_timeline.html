@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import demo_tag, initial, event_icon, qr_action, breadcrumbs %}
+{% from "_macros.html" import demo_tag, initial, event_icon, qr_action, breadcrumbs, reception_flags %}
 {% block title %}{{ patient.name if patient else 'Patient' }} · Patient timeline{% endblock %}
 {% block breadcrumbs %}{{ breadcrumbs([('Patients', '/patients'), (patient.name if patient else 'Patient not found', none)]) }}{% endblock %}
 {% block content %}
@@ -41,6 +41,7 @@
     {% endfor %}
   </ul>
   {% endif %}
+  {{ reception_flags(patient, block=true) }}
   {% for r in recommendations %}
   <p class="doctor-flag is-recommendation is-block" title="Entered by the doctor. Read-only.">
     Doctor recommendation: {{ r.procedure }} · {{ r.status|replace('_', ' ') }}{% if r.followup %} · follow-up booked {{ r.followup.appointment.start_time|fmt_date }} at {{ r.followup.appointment.start_time|fmt_time }}{% endif %}

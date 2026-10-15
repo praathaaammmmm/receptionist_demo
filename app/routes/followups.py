@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import schemas
 from ..database import get_db
-from ..models import CONSULTATION_FOLLOWUP_LABEL, FOLLOWUP_LABEL, RECOMMENDATION_STATES
+from ..models import CONSULTATION_FOLLOWUP_LABEL, FOLLOWUP_LABEL, FOLLOWUP_STATES, RECOMMENDATION_STATES
 from ..services import availability, followups
 from ..services.errors import ClinicError
 from .pages import redirect, render
@@ -33,7 +33,7 @@ def recommendation_out(r) -> dict:
         "doctor": {"id": r.doctor.id, "name": r.doctor.name},
         "procedure": r.procedure,
         "state": r.status,
-        "state_label": RECOMMENDATION_STATES.get(r.status, r.status),
+        "state_label": FOLLOWUP_STATES.get(r.status, r.status),
         "created_at": r.created_at.isoformat(),
         "followup_appointment_id": followup.appointment_id if followup else None,
         "followup_start_time": followup.appointment.start_time.isoformat() if followup else None,
@@ -48,7 +48,7 @@ def request_out(r) -> dict:
         "doctor": {"id": r.doctor.id, "name": r.doctor.name},
         "label": CONSULTATION_FOLLOWUP_LABEL,
         "state": r.status,
-        "state_label": RECOMMENDATION_STATES.get(r.status, r.status),
+        "state_label": FOLLOWUP_STATES.get(r.status, r.status),
         "approved_by": "doctor",
         "created_at": r.created_at.isoformat(),
         "followup_appointment_id": r.followup_appointment_id,
@@ -89,7 +89,7 @@ def page(
         "slots": slots,
         "days": days,
         "chosen_day": chosen_day,
-        "states": RECOMMENDATION_STATES,
+        "states": FOLLOWUP_STATES,
         "followup_label": FOLLOWUP_LABEL,
         "consultation_label": CONSULTATION_FOLLOWUP_LABEL,
     }

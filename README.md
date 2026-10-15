@@ -1,6 +1,6 @@
 # Smriti Raj Dentistry — AI Dental Front Desk Demo
 
-## Phase 1: Booking Foundation · Phase 2: Appointment Assistant and Callback Tasks · Phase 3: Voice-Call Simulation · Phase 5: Doctor Consultation Workspace · Phase 6: Doctor Schedule Calendar · Phase 7: Patient Timeline · Phase 8: QR Appointment Check-in · Phase 9: Waitlist and Cancellation Fill · Phase 10: Notification Centre · Phase 11: Admin Analytics · Phase 12: Procedure Follow-up Scheduler · Phase 13: Navigation, Button and Settings UX
+## Phase 1: Booking Foundation · Phase 2: Appointment Assistant and Callback Tasks · Phase 3: Voice-Call Simulation · Phase 5: Doctor Consultation Workspace · Phase 6: Doctor Schedule Calendar · Phase 7: Patient Timeline · Phase 8: QR Appointment Check-in · Phase 9: Waitlist and Cancellation Fill · Phase 10: Notification Centre · Phase 11: Admin Analytics · Phase 12: Procedure Follow-up Scheduler · Phase 13: Navigation, Button and Settings UX · Doctor Workspace upgrade
 
 A single-clinic appointment system for the Smriti Raj Dentistry reception desk: register and search patients, view doctor
 availability, create bookings, and manage them from a dashboard.
@@ -61,7 +61,13 @@ database index), cancelling an appointment and freeing its slot, status rules, d
 and a render check of every screen. Phase 13 (`tests/test_ux.py`) pins the grouped menu and its
 active states, the Demo tags, dashboard quick actions, More menus and confirmations, breadcrumbs,
 the Settings sections and placeholders, and that a Settings availability change reaches the
-calendar.
+calendar. `tests/test_doctor_workspace.py` covers the doctor's day counts and filters, the next-patient
+choice and masking, flags, the consultation lifecycle, ownership, previous/next navigation, the
+follow-up handoff and its privacy, the separate procedure path, operational-only patient context, and
+calendar/timeline links. `tests/test_patient_care.py` covers flags and their timeline entries,
+private-note isolation across reception pages and APIs, safe callbacks, follow-up requests with
+preferences, closing and reopening them, reception scheduling, and that doctors cannot edit identity
+fields, delete records or act on another doctor's patients.
 
 ## Patient assistant (Phase 2)
 
@@ -169,6 +175,71 @@ AI provider. The "after hours" status is part of the simulation, not a reading o
 - **What reception sees:** the new statuses, plus read-only "Next step" and "Doctor
   recommendation" markers on the dashboard and patient list. The doctor's summary and notes are
   not shown to reception, and the assistant has no access to any of it.
+
+**Workspace upgrade (daily clinical view).**
+
+- **Day summary:** counts for Upcoming, Arrived / waiting, In consultation, Completed and No-show
+  (each opens that filter), a **Next patient** card and a **Today's schedule** timeline.
+  - The card shows whoever is in consultation, otherwise the first patient waiting, otherwise the
+    next one expected.
+  - It shows time, service, mobile (masked to the last four digits), booking source, arrival or QR
+    check-in, and the right primary action.
+  - It also shows operational flags only: open callback, follow-up visit, follow-up due, from
+    waitlist, previous no-show.
+  - Age is not shown because the demo records no date of birth.
+- **Queue:** filters for All today, Upcoming, Waiting / arrived, In consultation, Completed and
+  No-show (`/doctor?doctor_id=…&show=waiting`). Each row has an arrival indicator, source badge, one
+  quick action, **Open consultation**, and a More menu with View in calendar and No-show.
+- **Lifecycle:** `Confirmed → Arrived → In consultation → Completed`.
+  - **Start consultation** (`POST /doctor/{doctor_id}/appointments/{id}/start`) works only for this
+    doctor's own arrived patients.
+  - It records a `ConsultationStart` row and a "Consultation started" timeline entry. The
+    appointment status itself stays `ARRIVED`, so reception, check-in, analytics and the transition
+    rules are unchanged.
+  - Outcomes can be saved once arrived, during consultation and after completion.
+  - Completing without a saved outcome asks a distinct, explicit confirmation.
+- **Consultation view:**
+  - Header with stage, time, service, source and arrival.
+  - Back to today's schedule, previous/next patient, patient timeline and View in calendar.
+  - A stage stepper, plus sections for Consultation, Treatment / recommendation and Patient context.
+  - Patient context is operational only: other visits with status and date, no-show and
+    cancellation counts, callback counts, waitlist origin, earlier recommendation names and states,
+    and arrival. It never shows another visit's summary or notes.
+- **Follow-up handoff:**
+  - A visible "Not sent → Ready for reception → Scheduled" stepper.
+  - Saving an outcome still sends nothing; the doctor sends the follow-up explicitly once the
+    consultation is completed.
+  - Procedure recommendations show "Draft → Ready for reception → Scheduled" and stay a separate path.
+- **Calendar:** `/doctor/calendar?doctor_id=…&appointment_id=…` opens the week holding that
+  appointment and highlights it; every calendar booking opens its consultation directly.
+
+**Doctor patient controls (Patient overview).** Each consultation has a Patient overview panel. Every
+action goes through one of the doctor's own appointments; another doctor gets 403.
+
+- **Patient information:** name, mobile, email, registration date, this booking's source and
+  waitlist origin. These are read-only; reception keeps contact and registration details.
+- **Visits with this doctor:** completed, cancelled and no-show counts, the next booked appointment
+  with them, recent visits, and a link to the full timeline.
+- **Operational flags** (per doctor and patient): "Needs follow-up", "Priority review" and "Do not
+  schedule without doctor review", set and cleared with checkboxes.
+  - Each change is a "Doctor flag set/cleared" timeline event carrying the flag name and doctor only.
+  - Reception sees each active flag with a fixed plain meaning on the dashboard, patient page and
+    Follow-ups. There is no free text, so no reasoning can be attached.
+  - The flags are advisory: booking is not blocked automatically.
+- **Private doctor notes:** one note per doctor and patient, with author and last-updated time,
+  shown only in that doctor's own workspace and labelled "Private doctor notes — not visible to
+  reception or patient." No reception page, timeline, API, notification, call screen or assistant
+  reads the `doctor_patient_notes` table.
+- **Care actions:**
+  - **Callback request for reception:** only fixed reasons are allowed ("Please call to arrange
+    follow-up", "Please confirm appointment", "Please ask patient to contact clinic"), and no
+    acknowledgement is queued to the patient.
+  - **Follow-up request:** once the patient has arrived, with no outcome or procedure needed, and an
+    optional preferred length (15/30/45 min) and timeframe (1 week, 2 weeks, 1 month or a date).
+  - **Mark a waiting request as no longer needed:** this sets it to Closed, and it can be reopened later.
+  - The doctor sees each request as Waiting, Scheduled (with the booked time) or Closed.
+- **Scheduling:** reception books follow-ups through the existing Follow-ups flow. The preference is
+  shown there, but slots keep the doctor's standard length, and nothing is booked automatically.
 
 ## Doctor schedule calendar (Phase 6)
 

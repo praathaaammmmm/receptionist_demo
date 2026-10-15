@@ -15,6 +15,7 @@ from ..models import (
     CALLBACK_COMPLETED,
     CALLBACK_IN_PROGRESS,
     NEXT_STEPS,
+    FOLLOWUP_STATES,
     RECOMMENDATION_STATES,
     STATUS_CANCELLED,
     STATUS_CONFIRMED,
@@ -56,7 +57,7 @@ def asset(path: str) -> str:
 templates.env.globals["asset"] = asset
 templates.env.globals["can_generate_qr"] = lambda appointment: checkin.can_generate(appointment)
 templates.env.globals["next_step_label"] = lambda code: NEXT_STEPS.get(code, code)
-templates.env.globals["recommendation_state"] = lambda code: RECOMMENDATION_STATES.get(code, code)
+templates.env.globals["recommendation_state"] = lambda code: FOLLOWUP_STATES.get(code, code)
 
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -70,11 +71,18 @@ NOTICES = {
     "callback_completed": ("success", "Callback task completed."),
     "arrived": ("success", "Patient marked as arrived."),
     "completed": ("success", "Consultation marked as completed."),
+    "consultation_started": ("success", "Consultation started. Write the outcome below; it can be saved now or after completing."),
     "no_show": ("success", "Booking marked as no-show."),
     "outcome_saved": ("success", "Consultation outcome saved. The summary, next step and note below are what is stored."),
     "recommendation_saved": ("success", "Draft treatment recommendation saved."),
     "recommendation_ready": ("success", "Marked ready. Reception can now schedule a follow-up."),
     "followup_sent": ("success", "Follow-up sent to reception. It is now on their Follow-ups list to be booked."),
+    "care_flags": ("success", "Patient flags saved. Reception sees the flag names and what they mean, nothing else."),
+    "care_flags_unchanged": ("success", "No flag changes to save."),
+    "care_note": ("success", "Private doctor notes saved. Only you can see them, here in the doctor workspace."),
+    "care_callback": ("success", "Callback request sent to reception with the reason you chose."),
+    "care_followup": ("success", "Follow-up request sent to reception. Nothing is booked until reception schedules it."),
+    "care_followup_closed": ("success", "Follow-up request closed. It is no longer on reception’s list."),
     "notification_sent": ("success", "Marked as sent (simulated). No message left this app."),
     "notification_delivered": ("success", "Marked as delivered (simulated)."),
     "notification_failed": ("success", "Marked as failed (simulated). It can be retried."),

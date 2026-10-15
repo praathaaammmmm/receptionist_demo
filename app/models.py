@@ -28,8 +28,84 @@ RECOMMENDATION_STATES = {
     RECOMMENDATION_READY: "Ready for scheduling",
     RECOMMENDATION_SCHEDULED: "Scheduled",
 }
+# The follow-up lifecycle shared by consultation follow-ups and procedure-discussion recommendations.
+# The doctor owns Draft → Ready; reception owns contact and scheduling; the booked appointment drives
+# Completed (and a cancelled or missed booking goes back to Awaiting patient response).
+FOLLOWUP_CONTACT = "CONTACT_PATIENT"
+FOLLOWUP_AWAITING = "AWAITING_RESPONSE"
+FOLLOWUP_COMPLETED = "COMPLETED"
+FOLLOWUP_STATES = {
+    **RECOMMENDATION_STATES,
+    FOLLOWUP_CONTACT: "Contact patient",
+    FOLLOWUP_AWAITING: "Awaiting patient response",
+    FOLLOWUP_COMPLETED: "Completed",
+    "CLOSED": "Closed · not required",
+}
+# States in which reception still has something to do (shown in "awaiting" lists).
+FOLLOWUP_OPEN_STATES = (RECOMMENDATION_READY, FOLLOWUP_CONTACT, FOLLOWUP_AWAITING)
+FOLLOWUP_TYPES = {
+    "CONSULTATION": "Consultation follow-up",
+    "REVIEW": "Review / check-up",
+    "PROCEDURE_DISCUSSION": "Procedure discussion",
+    "PROCEDURE_APPOINTMENT": "Procedure appointment",
+}
+PRIORITIES = {"ROUTINE": "Routine", "SOON": "Soon", "PRIORITY": "Priority"}
+# Operational reasons for closing a request. Fixed, so no clinical reasoning can be attached.
+CLOSE_REASONS = {
+    "NOT_NEEDED": "No longer needed after review",
+    "PATIENT_DECLINED": "Patient declined",
+    "BOOKED_ELSEWHERE": "Already booked another way",
+    "UNREACHABLE": "Patient could not be reached",
+    "DUPLICATE": "Duplicate request",
+}
+
+# Procedure plans: an approved service the doctor plans to carry out, scheduled by reception.
+PLAN_DRAFT = "DRAFT"
+PLAN_READY = "READY_FOR_RECEPTION"
+PLAN_DISCUSSING = "DISCUSSING"
+PLAN_ACCEPTED = "ACCEPTED"
+PLAN_SCHEDULED = "SCHEDULED"
+PLAN_COMPLETED = "COMPLETED"
+PLAN_DECLINED = "DECLINED"
+PLAN_DEFERRED = "DEFERRED"
+PLAN_CANCELLED = "CANCELLED"
+PLAN_STATES = {
+    PLAN_DRAFT: "Draft",
+    PLAN_READY: "Ready for reception",
+    PLAN_DISCUSSING: "Discussing with patient",
+    PLAN_ACCEPTED: "Accepted",
+    PLAN_SCHEDULED: "Scheduled",
+    PLAN_COMPLETED: "Completed",
+    PLAN_DECLINED: "Declined",
+    PLAN_DEFERRED: "Deferred",
+    PLAN_CANCELLED: "Cancelled",
+}
+PLAN_OPEN_STATES = (PLAN_READY, PLAN_DISCUSSING, PLAN_ACCEPTED, PLAN_DEFERRED)
+PLAN_RESOURCES = {"CHAIR": "Treatment chair", "ROOM": "Procedure room", "EQUIPMENT": "Special equipment"}
+PLAN_DURATIONS = (30, 45, 60, 90, 120)
+PLAN_INSTRUCTION_LIMIT = 160
 FOLLOWUP_LABEL = "Procedure discussion / follow-up"
 CONSULTATION_FOLLOWUP_LABEL = "Consultation follow-up"
+# A follow-up the doctor marked as no longer needed (before reception booked it).
+FOLLOWUP_CLOSED = "CLOSED"
+
+# Doctor-managed patient flags: (label, plain operational meaning for reception). No clinical reasoning.
+PATIENT_FLAGS = {
+    "NEEDS_FOLLOW_UP": ("Needs follow-up", "The doctor wants this patient seen again. Check Follow-ups for a booking request."),
+    "PRIORITY_REVIEW": ("Priority review", "Give this patient priority: offer the earliest suitable time and let the doctor know when booked."),
+    "DOCTOR_REVIEW_BEFORE_BOOKING": (
+        "Do not schedule without doctor review", "Check with the doctor before booking any new appointment for this patient.",
+    ),
+}
+# Fixed, operational reasons a doctor may give reception for a callback. Doctors cannot type free text here.
+DOCTOR_CALLBACK_REASONS = {
+    "ARRANGE_FOLLOW_UP": "Please call to arrange follow-up",
+    "CONFIRM_APPOINTMENT": "Please confirm appointment",
+    "ASK_TO_CONTACT": "Please ask patient to contact clinic",
+}
+# Preferred follow-up timing the doctor can attach to a request. Reception still books a normal slot.
+FOLLOWUP_DURATIONS = (15, 30, 45)
+FOLLOWUP_TIMEFRAMES = {"WEEK_1": ("Within 1 week", 7), "WEEK_2": ("Within 2 weeks", 14), "MONTH_1": ("Within 1 month", 30), "DATE": ("By a chosen date", None)}
 
 BLOCK_REASONS = {"LEAVE": "Leave", "PERSONAL": "Personal", "TRAINING": "Training", "OTHER": "Other"}
 
@@ -85,6 +161,39 @@ class Service(Base):
     name: Mapped[str] = mapped_column(String(120), unique=True)
     fee: Mapped[int] = mapped_column(default=0)
     is_demo: Mapped[bool] = mapped_column(default=False)
+
+
+class Planning:
+    """Reception-facing planning fields shared by follow-ups and procedure plans: priority, a suggested
+    timeframe with its target date, and a preferred length. Operational only."""
+
+    @property
+    def priority_code(self) -> str:
+        return self.priority or "ROUTINE"
+
+    @property
+    def priority_label(self) -> str:
+        return PRIORITIES.get(self.priority_code, "Routine")
+
+    @property
+    def timeframe_label(self) -> str | None:
+        if self.timeframe and self.timeframe != "DATE":
+            return FOLLOWUP_TIMEFRAMES[self.timeframe][0]
+        return f"By {utils.fmt_date(self.by_date)}" if self.by_date else None
+
+    def is_overdue(self, today: date) -> bool:
+        return bool(self.by_date and self.by_date < today and self.status in (*FOLLOWUP_OPEN_STATES, *PLAN_OPEN_STATES))
+
+    @property
+    def summary(self) -> str:
+        parts = []
+        if getattr(self, "duration_minutes", None):
+            parts.append(f"{self.duration_minutes} min")
+        if self.timeframe and self.timeframe != "DATE":
+            parts.append(FOLLOWUP_TIMEFRAMES[self.timeframe][0].lower())
+        if self.by_date:
+            parts.append(f"by {utils.fmt_date(self.by_date)}")
+        return " · ".join(parts)
 
 
 class Patient(Base):
@@ -218,7 +327,65 @@ class ConsultationOutcome(Base):
     doctor: Mapped[Doctor] = relationship()
 
 
-class TreatmentRecommendation(Base):
+class ConsultationStart(Base):
+    """When the doctor started seeing an arrived patient ("In consultation").
+
+    A workspace stage, not an appointment status: the appointment stays ARRIVED until
+    it is completed, so reception, check-in, analytics and the calendar are unchanged.
+    """
+
+    __tablename__ = "consultation_starts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    appointment_id: Mapped[int] = mapped_column(ForeignKey("appointments.id"), unique=True)
+    doctor_id: Mapped[int] = mapped_column(ForeignKey("doctors.id"))
+    started_at: Mapped[datetime] = mapped_column(default=lambda: utils.now())
+
+    appointment: Mapped[Appointment] = relationship(backref=backref("consultation_start", uselist=False))
+
+
+class PatientFlag(Base):
+    """An operational flag a doctor sets on one of their patients. Reception sees the label and its
+    plain meaning; there is no free text, so no clinical reasoning can be attached."""
+
+    __tablename__ = "patient_flags"
+    __table_args__ = (UniqueConstraint("patient_id", "doctor_id", "kind"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"), index=True)
+    doctor_id: Mapped[int] = mapped_column(ForeignKey("doctors.id"))
+    kind: Mapped[str] = mapped_column(String(40))
+    active: Mapped[bool] = mapped_column(default=True)
+    updated_at: Mapped[datetime] = mapped_column(default=lambda: utils.now())
+
+    patient: Mapped[Patient] = relationship(backref=backref("flags", order_by="PatientFlag.id"))
+    doctor: Mapped[Doctor] = relationship()
+
+    @property
+    def label(self) -> str:
+        return PATIENT_FLAGS[self.kind][0]
+
+    @property
+    def meaning(self) -> str:
+        return PATIENT_FLAGS[self.kind][1]
+
+
+class DoctorPatientNote(Base):
+    """Private doctor notes about a patient. Read and written only in that doctor's own workspace:
+    no reception page, timeline, API, notification, call screen or assistant reads this table."""
+
+    __tablename__ = "doctor_patient_notes"
+    __table_args__ = (UniqueConstraint("patient_id", "doctor_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"), index=True)
+    doctor_id: Mapped[int] = mapped_column(ForeignKey("doctors.id"))  # the author
+    body: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: utils.now())
+    updated_at: Mapped[datetime] = mapped_column(default=lambda: utils.now())
+
+
+class TreatmentRecommendation(Planning, Base):
     """A doctor's draft treatment recommendation. Only the doctor workspace creates these;
     reception and the assistant can read them but never create, edit or approve them."""
 
@@ -232,6 +399,11 @@ class TreatmentRecommendation(Base):
     doctor_note: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default=RECOMMENDATION_DRAFT)
     created_at: Mapped[datetime] = mapped_column(default=lambda: utils.now())
+    # Planning (added later, so nullable): set by the doctor when releasing it to reception.
+    priority: Mapped[str | None] = mapped_column(String(20))
+    timeframe: Mapped[str | None] = mapped_column(String(20))
+    by_date: Mapped[date | None]
+    close_reason: Mapped[str | None] = mapped_column(String(30))
 
     appointment: Mapped[Appointment] = relationship(backref=backref("recommendations", order_by="TreatmentRecommendation.id"))
     doctor: Mapped[Doctor] = relationship()
@@ -405,24 +577,30 @@ class ProcedureFollowup(Base):
     appointment: Mapped[Appointment] = relationship(backref=backref("followup", uselist=False))
 
 
-class ConsultationFollowup(Base):
-    """A doctor's request for reception to book a follow-up consultation.
+class ConsultationFollowup(Planning, Base):
+    """A doctor's request for reception to book a follow-up consultation (or a review / check-up).
 
-    Created only by the doctor, explicitly, after a completed consultation whose
-    next step is "Follow-up consultation". It carries no clinical text: reception
-    sees the patient, the doctor, the label and the state.
+    Created only by the doctor: as a draft, or sent straight to reception. It carries no clinical
+    text: reception sees the patient, the doctor, the type, planning fields and the state.
     """
 
     __tablename__ = "consultation_followups"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    appointment_id: Mapped[int] = mapped_column(ForeignKey("appointments.id"), unique=True)  # the completed consultation
+    appointment_id: Mapped[int] = mapped_column(ForeignKey("appointments.id"), unique=True)  # the original consultation
     doctor_id: Mapped[int] = mapped_column(ForeignKey("doctors.id"))
     patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"), index=True)
     status: Mapped[str] = mapped_column(String(20), default=RECOMMENDATION_READY, index=True)
     created_at: Mapped[datetime] = mapped_column(default=lambda: utils.now())
     followup_appointment_id: Mapped[int | None] = mapped_column(ForeignKey("appointments.id"), unique=True)
     staff_note: Mapped[str | None] = mapped_column(Text)  # reception's scheduling note
+    # Planning (added later, so nullable). An empty type means a consultation follow-up.
+    followup_type: Mapped[str | None] = mapped_column(String(20))
+    priority: Mapped[str | None] = mapped_column(String(20))
+    timeframe: Mapped[str | None] = mapped_column(String(20))
+    by_date: Mapped[date | None]
+    duration_minutes: Mapped[int | None]
+    close_reason: Mapped[str | None] = mapped_column(String(30))
 
     appointment: Mapped[Appointment] = relationship(
         foreign_keys=[appointment_id], backref=backref("followup_request", uselist=False)
@@ -432,3 +610,63 @@ class ConsultationFollowup(Base):
     )
     doctor: Mapped[Doctor] = relationship()
     patient: Mapped[Patient] = relationship()
+
+    @property
+    def type_code(self) -> str:
+        return self.followup_type or "CONSULTATION"
+
+    @property
+    def type_label(self) -> str:
+        return FOLLOWUP_TYPES[self.type_code]
+
+
+class ProcedurePlan(Planning, Base):
+    """A doctor's plan for a procedure appointment, using an approved service from the clinic catalogue.
+
+    Reception sees the service name, status, the short operational instruction, the preferred doctor,
+    timeframe, duration and resources. The private note never leaves the doctor workspace.
+    """
+
+    __tablename__ = "procedure_plans"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"), index=True)
+    doctor_id: Mapped[int] = mapped_column(ForeignKey("doctors.id"))  # the planning doctor, who owns it
+    appointment_id: Mapped[int] = mapped_column(ForeignKey("appointments.id"), index=True)  # the consultation it came from
+    service_id: Mapped[int] = mapped_column(ForeignKey("services.id"))
+    preferred_doctor_id: Mapped[int] = mapped_column(ForeignKey("doctors.id"))
+    duration_minutes: Mapped[int | None]
+    timeframe: Mapped[str | None] = mapped_column(String(20))
+    by_date: Mapped[date | None]
+    priority: Mapped[str | None] = mapped_column(String(20))
+    resources: Mapped[str | None] = mapped_column(String(80))  # comma-separated PLAN_RESOURCES codes
+    reception_instruction: Mapped[str | None] = mapped_column(String(PLAN_INSTRUCTION_LIMIT))
+    private_note: Mapped[str | None] = mapped_column(Text)  # doctor workspace only
+    status: Mapped[str] = mapped_column(String(20), default=PLAN_DRAFT, index=True)
+    close_reason: Mapped[str | None] = mapped_column(String(30))
+    created_at: Mapped[datetime] = mapped_column(default=lambda: utils.now())
+    updated_at: Mapped[datetime] = mapped_column(default=lambda: utils.now())
+    scheduled_appointment_id: Mapped[int | None] = mapped_column(ForeignKey("appointments.id"), unique=True)
+
+    patient: Mapped[Patient] = relationship()
+    doctor: Mapped[Doctor] = relationship(foreign_keys=[doctor_id])
+    preferred_doctor: Mapped[Doctor] = relationship(foreign_keys=[preferred_doctor_id])
+    service: Mapped[Service] = relationship()
+    appointment: Mapped[Appointment] = relationship(
+        foreign_keys=[appointment_id], backref=backref("procedure_plans", order_by="ProcedurePlan.id")
+    )
+    scheduled_appointment: Mapped[Appointment | None] = relationship(
+        foreign_keys=[scheduled_appointment_id], backref=backref("procedure_plan", uselist=False)
+    )
+
+    @property
+    def resource_codes(self) -> list[str]:
+        return [r for r in (self.resources or "").split(",") if r in PLAN_RESOURCES]
+
+    @property
+    def resource_labels(self) -> list[str]:
+        return [PLAN_RESOURCES[r] for r in self.resource_codes]
+
+    @property
+    def state_label(self) -> str:
+        return PLAN_STATES.get(self.status, self.status)

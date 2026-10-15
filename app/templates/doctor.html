@@ -4,7 +4,7 @@
 {% macro status_form(a, status, label, style="") %}
 {% set confirms = {
   'ARRIVED': 'Mark ' ~ a.patient.name ~ ' as arrived? Reception and the calendar will show them as in the clinic.',
-  'COMPLETED': 'Mark the visit for ' ~ a.patient.name ~ ' as completed? This cannot be undone.',
+  'COMPLETED': ('Mark the visit for ' ~ a.patient.name ~ ' as completed? This cannot be undone.') if a.outcome else ('No consultation outcome has been saved for ' ~ a.patient.name ~ '. Complete the visit without an outcome? This cannot be undone.'),
   'NO_SHOW': 'Mark ' ~ a.patient.name ~ ' as a no-show? This cannot be undone.',
 } %}
 <form method="post" action="/doctor/{{ doctor.id }}/appointments/{{ a.id }}/status"{% if status in confirms %} data-confirm="{{ confirms[status] }}"{% endif %}>
@@ -12,13 +12,65 @@
   <button class="btn btn-sm {{ style }}" type="submit">{{ label }}</button>
 </form>
 {% endmacro %}
-{# One main action per visit; the destructive no-show sits behind "More". #}
+{% macro start_form(a, style="btn-success") %}
+<form method="post" action="/doctor/{{ doctor.id }}/appointments/{{ a.id }}/start">
+  <button class="btn btn-sm {{ style }}" type="submit">Start consultation</button>
+</form>
+{% endmacro %}
+{% macro calendar_href(a) %}/doctor/calendar?doctor_id={{ doctor.id }}&appointment_id={{ a.id }}#cal-appt-{{ a.id }}{% endmacro %}
+{% macro open_href(a) %}/doctor?doctor_id={{ doctor.id }}&appointment_id={{ a.id }}#consultation{% endmacro %}
+{# One main action per visit, chosen by its stage: Confirmed → Mark arrived, Arrived → Start consultation,
+   In consultation → Complete. The rest (no-show, completing without starting, calendar) sits behind "More". #}
 {% macro actions(a) %}
-  {% if a.status == 'CONFIRMED' %}{{ status_form(a, 'ARRIVED', 'Mark arrived', 'btn-success') }}{% endif %}
-  {% if a.status == 'ARRIVED' %}{{ status_form(a, 'COMPLETED', 'Mark completed', 'btn-success') }}{% endif %}
-  {% if a.status in ('CONFIRMED', 'ARRIVED') %}
-  {% call more_menu("More actions for " ~ a.patient.name) %}{{ status_form(a, 'NO_SHOW', 'Mark as no-show', 'btn-danger') }}{% endcall %}
-  {% endif %}
+  {% set st = stage_of(a) %}
+  {% if st == 'UPCOMING' %}{{ status_form(a, 'ARRIVED', 'Mark arrived', 'btn-success') }}
+  {% elif st == 'WAITING' %}{{ start_form(a) }}
+  {% elif st == 'IN_CONSULTATION' %}{{ status_form(a, 'COMPLETED', 'Mark completed', 'btn-success') }}{% endif %}
+  {% call more_menu("More actions for " ~ a.patient.name) %}
+    <a href="{{ calendar_href(a) }}">View in calendar</a>
+    {% if st == 'WAITING' %}{{ status_form(a, 'COMPLETED', 'Mark completed without starting', '') }}{% endif %}
+    {% if a.status in ('CONFIRMED', 'ARRIVED') %}{{ status_form(a, 'NO_SHOW', 'Mark as no-show', 'btn-danger') }}{% endif %}
+  {% endcall %}
+{% endmacro %}
+{# The doctor's preferred follow-up length and timing. Optional; reception still books a normal slot. #}
+{% macro followup_fields() %}
+<div class="followup-fields">
+  <label>Preferred length
+    <select name="duration">
+      <option value="">Standard length</option>
+      {% for m in followup_durations %}<option value="{{ m }}">{{ m }} minutes</option>{% endfor %}
+    </select>
+  </label>
+  <label>When
+    <select name="timeframe">
+      <option value="">No preference</option>
+      {% for code, (label, days) in followup_timeframes.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Date <span class="muted">(if “By a chosen date”)</span>
+    <input type="date" name="by_date" min="{{ tomorrow.isoformat() }}">
+  </label>
+</div>
+{% endmacro %}
+{% macro stage_chip(a) %}{% set st = stage_of(a) %}<span class="stage stage-{{ st|lower }}">{{ stage_labels[st] }}</span>{% endmacro %}
+{% macro arrival_mark(a) %}{% set ar = arrival_of(a) %}<span class="arrival arrival-{{ ar.state }}">{{ ar.label }}</span>{% endmacro %}
+{% macro flag_list(flags) %}{% if flags %}<ul class="flag-list" aria-label="Front-desk flags">{% for f in flags %}<li class="flag">{{ f }}</li>{% endfor %}</ul>{% endif %}{% endmacro %}
+{# The day at a glance: every patient in time order. Each entry opens that consultation. #}
+{% macro day_timeline(current_id=none, compact=false) %}
+<ol class="day-timeline{{ ' is-compact' if compact }}" aria-label="Today’s schedule for {{ doctor.name }}">
+  {% for v in board.visits %}
+  {% set a = v.appointment %}
+  <li class="day-slot stage-{{ v.stage|lower }}{{ ' is-current' if a.id == current_id }}">
+    <a href="{{ open_href(a) }}" {% if a.id == current_id %}aria-current="true"{% endif %}>
+      <span class="day-time">{{ a.start_time|fmt_time }}</span>
+      <span class="day-name">{{ a.patient.name }}</span>
+      <span class="stage stage-{{ v.stage|lower }}">{{ v.stage_label }}</span>
+    </a>
+  </li>
+  {% else %}
+  <li class="day-empty">No confirmed patients today.</li>
+  {% endfor %}
+</ol>
 {% endmacro %}
 {% block breadcrumbs %}
 {% if view == 'schedule' %}
@@ -48,21 +100,14 @@
 </div>
 {% else %}
 <p class="doctor-note"><strong>Treatment decisions are entered and controlled by the doctor.</strong> This demo workspace is not a medical record. It does not diagnose, prescribe, give medical advice or schedule procedures, and nothing here is written or approved by the assistant or by reception.</p>
-
-<section class="card">
-  <div class="card-head"><h2>Doctor</h2><span class="muted">Demo-only switcher. There is no doctor login in this demo.</span></div>
-  <div class="choice-row">
+<div class="doctor-switch" role="group" aria-label="Doctor">
+  <span class="doctor-switch-label">Doctor <span class="muted">· demo-only switcher, no doctor login</span></span>
+  <div class="chip-row">
     {% for d in doctors %}
-    <a class="choice {{ 'is-selected' if d.id == doctor.id }}" {% if d.id == doctor.id %}aria-current="true"{% endif %} href="{{ '/doctor/calendar' if view == 'schedule' else '/doctor' }}?doctor_id={{ d.id }}">
-      {{ initial(d.name) }}
-      <span class="choice-body">
-        <strong>{{ d.name }}</strong> {{ demo_tag(d) }}
-        <span class="muted">{{ d.speciality }}</span>
-      </span>
-    </a>
+    <a class="chip {{ 'is-selected' if d.id == doctor.id }}" {% if d.id == doctor.id %}aria-current="true"{% endif %} href="/doctor?doctor_id={{ d.id }}">{{ d.name }} <span class="chip-note">{{ d.speciality }}</span></a>
     {% endfor %}
   </div>
-</section>
+</div>
 {% endif %}
 
 <nav class="tabs" aria-label="Doctor workspace sections">
@@ -104,7 +149,7 @@
         {% for e in day.entries %}
           {% if e.kind == 'appointment' %}
           {% set a = e.appointment %}
-          <a class="cal-item cal-appt is-{{ a.status|lower }}" href="/doctor?doctor_id={{ doctor.id }}&appointment_id={{ a.id }}#consultation" title="{{ a.service.name }} · {{ a.source }}">
+          <a class="cal-item cal-appt is-{{ a.status|lower }}{{ ' is-current' if a.id == highlight_id }}" id="cal-appt-{{ a.id }}" href="/doctor?doctor_id={{ doctor.id }}&appointment_id={{ a.id }}#consultation" title="Open consultation · {{ a.service.name }} · {{ a.source }}" {% if a.id == highlight_id %}aria-current="true"{% endif %}>
             <span class="cal-time">{{ e.start|fmt_time }}</span>
             <strong>{{ a.patient.name }}</strong>
             <span class="cal-status">{{ a.status|replace('_', ' ') }}</span>
@@ -176,20 +221,68 @@
   </section>
 </div>
 {% else %}
-<section class="card">
+{% if not selected %}
+{# ---- The doctor's day: summary, next patient, timeline, then the filterable queue ---- #}
+<section class="card day-summary" aria-labelledby="day-summary-title">
+  <div class="card-head">
+    <h2 id="day-summary-title">{{ doctor.name }} · {{ today.strftime("%a %d %b") }}</h2>
+    <span class="muted">{% if awaiting %}{{ awaiting }} more {{ 'booking' if awaiting == 1 else 'bookings' }} awaiting reception confirmation{% else %}Confirmed patients only; reception confirms bookings{% endif %}</span>
+  </div>
+  <ul class="stage-counts" aria-label="Today by stage">
+    {% for key, (label, st) in filters.items() if st %}
+    <li><a class="stage-count stage-{{ st|lower }}{{ ' is-selected' if board.filter == key }}" href="/doctor?doctor_id={{ doctor.id }}&show={{ key }}#queue"><strong>{{ board.counts[st] }}</strong><span>{{ stage_labels[st] if st != 'WAITING' else 'Arrived / waiting' }}</span></a></li>
+    {% endfor %}
+  </ul>
+  <div class="day-grid">
+    {% set nv = board.next_visit %}
+    {% if nv %}
+    {% set a = nv.appointment %}
+    <article class="next-patient stage-{{ nv.stage|lower }}" aria-labelledby="next-patient-name">
+      <p class="eyebrow">{{ 'With you now' if nv.stage == 'IN_CONSULTATION' else 'Next patient' }}</p>
+      <h3 id="next-patient-name"><a href="{{ open_href(a) }}">{{ a.patient.name }}</a> {{ demo_tag(a) }}</h3>
+      <dl class="next-facts">
+        <div><dt>Time</dt><dd>{{ a.start_time|fmt_time }} · {{ ((a.end_time - a.start_time).total_seconds() // 60)|int }} min</dd></div>
+        <div><dt>Service</dt><dd>{{ a.service.name }}</dd></div>
+        <div><dt>Mobile</dt><dd title="Hidden except the last four digits">{{ mask_mobile(a.patient.mobile) }}</dd></div>
+        <div><dt>Booked via</dt><dd><span class="tag">{{ a.source }}</span></dd></div>
+        <div><dt>Arrival</dt><dd>{{ arrival_mark(a) }}</dd></div>
+        <div><dt>Stage</dt><dd>{{ stage_chip(a) }}</dd></div>
+      </dl>
+      {{ flag_list(nv.flags) }}
+      <div class="next-actions">
+        {% if nv.stage == 'UPCOMING' %}{{ status_form(a, 'ARRIVED', 'Mark arrived', 'btn-primary') }}
+        {% elif nv.stage == 'WAITING' %}{{ start_form(a, 'btn-primary') }}
+        {% else %}<a class="btn btn-sm btn-primary" href="/doctor?doctor_id={{ doctor.id }}&appointment_id={{ a.id }}#consult-outcome">Write outcome</a>{{ status_form(a, 'COMPLETED', 'Complete consultation', '') }}{% endif %}
+        <a class="btn btn-sm" href="{{ open_href(a) }}">Open consultation</a>
+        <a class="btn btn-sm btn-ghost" href="{{ calendar_href(a) }}">View in calendar</a>
+      </div>
+    </article>
+    {% else %}
+    <article class="next-patient is-empty">
+      <p class="eyebrow">Next patient</p>
+      <p>{{ 'Everyone on today’s list has been seen.' if board.visits else 'No confirmed patients for ' ~ doctor.name ~ ' today.' }}</p>
+    </article>
+    {% endif %}
+    <div class="day-timeline-wrap">
+      <h3>Today’s schedule</h3>
+      {{ day_timeline() }}
+    </div>
+  </div>
+</section>
+
+<section class="card" id="queue">
   <div class="card-head">
     <h2>{{ doctor.name }} · today’s list</h2>
     <span class="muted">Confirmed and arrived patients{% if awaiting %} · {{ awaiting }} more awaiting reception confirmation{% endif %}</span>
   </div>
-  <dl class="doctor-counts">
-    <div><dt>Waiting</dt><dd>{{ counts.waiting }}</dd></div>
-    <div><dt>In clinic</dt><dd>{{ counts.in_clinic }}</dd></div>
-    <div><dt>Completed</dt><dd>{{ counts.completed }}</dd></div>
-    <div><dt>No-show</dt><dd>{{ counts.no_show }}</dd></div>
-  </dl>
-  {% if appointments %}
-  <table class="appt-table" role="table">
-    <caption class="sr-only">Today’s appointments for {{ doctor.name }}</caption>
+  <nav class="filter-tabs" aria-label="Filter today’s patients">
+    {% for key, (label, st) in filters.items() %}
+    <a class="filter-tab{{ ' is-active' if board.filter == key }}" {% if board.filter == key %}aria-current="page"{% endif %} href="/doctor?doctor_id={{ doctor.id }}{{ '&show=' ~ key if key != 'all' }}#queue">{{ label }} <span class="count">{{ board.visits|length if not st else board.counts[st] }}</span></a>
+    {% endfor %}
+  </nav>
+  {% if board.shown %}
+  <table class="appt-table queue" role="table">
+    <caption class="sr-only">Today’s appointments for {{ doctor.name }}: {{ filters[board.filter][0] }}</caption>
     <thead role="rowgroup">
       <tr role="row">
         <th role="columnheader" scope="col">Time</th>
@@ -200,47 +293,82 @@
       </tr>
     </thead>
     <tbody role="rowgroup">
-      {% for a in appointments %}
-      <tr role="row" class="appt {{ 'is-selected' if selected and selected.id == a.id }}">
+      {% for v in board.shown %}
+      {% set a = v.appointment %}
+      <tr role="row" class="appt stage-row-{{ v.stage|lower }}" id="queue-{{ a.id }}">
         <td role="cell" class="appt-time">
           <strong>{{ a.start_time|fmt_time }}</strong>
           <span class="muted">{{ ((a.end_time - a.start_time).total_seconds() // 60)|int }} min</span>
         </td>
         <td role="cell" class="appt-main">
-          <div class="appt-patient">{{ a.patient.name }} {{ demo_tag(a) }}</div>
+          <div class="appt-patient"><a class="timeline-link" href="{{ open_href(a) }}" title="Open consultation">{{ a.patient.name }}</a> {{ demo_tag(a) }}</div>
           <div class="muted">{{ a.patient.mobile }}</div>
+          {{ arrival_mark(a) }}
         </td>
-        <td role="cell" class="appt-reason">{{ a.service.name }}{% if a.reason %} — {{ a.reason }}{% endif %}</td>
+        <td role="cell" class="appt-reason">{{ a.service.name }}{% if a.reason %} — {{ a.reason }}{% endif %}{{ flag_list(v.flags) }}</td>
         <td role="cell" class="appt-meta">
           <span class="pill pill-{{ a.status|lower }}">{{ a.status|replace('_', ' ') }}</span>
+          {% if v.stage in ('WAITING', 'IN_CONSULTATION') %}{{ stage_chip(a) }}{% endif %}
           <span class="tag">{{ a.source }}</span>
         </td>
         <td role="cell" class="appt-actions">
           {{ actions(a) }}
-          <a class="btn btn-sm" href="/doctor?doctor_id={{ doctor.id }}&appointment_id={{ a.id }}#consultation">Open</a>
+          <a class="btn btn-sm" href="{{ open_href(a) }}">Open consultation</a>
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  {% elif board.visits %}
+  <p class="empty">No patients are {{ filters[board.filter][0]|lower }} right now. <a href="/doctor?doctor_id={{ doctor.id }}#queue">Show all today</a></p>
   {% else %}
   <p class="empty">No confirmed or arrived patients for {{ doctor.name }} today. Bookings appear here once reception confirms them.</p>
   {% endif %}
 </section>
-
-{% if selected %}
+{% else %}
+{# ---- One consultation, focused. The day strip keeps every other patient one click away. ---- #}
 {% set a = selected %}
-<section class="card" id="consultation" tabindex="-1">
+{% set st = stage_of(a) %}
+{% set prev, nxt = neighbours %}
+<nav class="day-strip" aria-label="Today’s patients">
+  <a class="btn btn-sm btn-ghost" href="/doctor?doctor_id={{ doctor.id }}">← Back to today’s schedule</a>
+  {{ day_timeline(a.id, compact=true) }}
+</nav>
+
+<section class="card consultation" id="consultation" tabindex="-1">
   {% if panel_notice %}
   <div class="alert alert-{{ panel_notice[0] }}" id="consultation-notice" role="{{ 'alert' if panel_notice[0] == 'error' else 'status' }}">{{ panel_notice[1] }}</div>
   {% endif %}
   <div class="consult-head">
     <div>
-      <p class="eyebrow">Consultation</p>
+      <p class="eyebrow">Consultation{% if st %} · {{ stage_labels[st] }}{% endif %}</p>
       <h2>{{ a.patient.name }} <span class="pill pill-{{ a.status|lower }}">{{ a.status|replace('_', ' ') }}</span></h2>
+      <p class="consult-meta">{{ a.start_time|fmt_date }} at {{ a.start_time|fmt_time }} · {{ a.service.name }} · <span class="tag">{{ a.source }}</span> · {{ arrival_mark(a) }}</p>
     </div>
     <div class="consult-actions">{{ actions(a) }}</div>
   </div>
+  <nav class="consult-nav" aria-label="Consultation navigation">
+    {% if prev %}<a class="btn btn-sm btn-ghost" href="{{ open_href(prev) }}" rel="prev">‹ Previous: {{ prev.patient.name }}</a>{% endif %}
+    {% if nxt %}<a class="btn btn-sm btn-ghost" href="{{ open_href(nxt) }}" rel="next">Next: {{ nxt.patient.name }} ›</a>{% endif %}
+    <span class="consult-links">
+      <a href="/patients/{{ a.patient.id }}/timeline">Patient timeline</a>
+      <a href="{{ calendar_href(a) }}">View in calendar</a>
+    </span>
+  </nav>
+  <ol class="lifecycle" aria-label="Visit stage">
+    {% set order = ['UPCOMING', 'WAITING', 'IN_CONSULTATION', 'COMPLETED'] %}
+    {% set labels = {'UPCOMING': 'Confirmed', 'WAITING': 'Arrived', 'IN_CONSULTATION': 'In consultation', 'COMPLETED': 'Completed'} %}
+    {% for key in order %}
+    {% set done = st in order and order.index(key) < order.index(st) %}
+    <li class="{{ 'is-done' if done }}{{ ' is-current' if key == st }}" {% if key == st %}aria-current="step"{% endif %}>{{ labels[key] }}</li>
+    {% endfor %}
+    {% if a.status == 'NO_SHOW' %}<li class="is-current is-final" aria-current="step">No-show</li>{% endif %}
+  </ol>
+  <nav class="section-tabs" aria-label="Consultation sections">
+    <a href="#consult-outcome">Consultation</a>
+    <a href="#consult-treatment">Treatment / recommendation</a>
+    <a href="#patient-overview">Patient overview</a>
+  </nav>
   <dl class="consult-facts">
     <div><dt>Appointment</dt><dd>{{ a.start_time|fmt_date }} at {{ a.start_time|fmt_time }}</dd></div>
     <div><dt>Mobile</dt><dd>{{ a.patient.mobile }}</dd></div>
@@ -250,10 +378,10 @@
   </dl>
 
   <div class="consult-grid">
-    <div>
+    <div class="consult-section" id="consult-outcome">
       <h3>Doctor-entered consultation outcome</h3>
       {% if a.status in ('ARRIVED', 'COMPLETED') %}
-      <p class="hint">Written by {{ doctor.name }}. Reception sees only the next step.</p>
+      <p class="hint">Written by {{ doctor.name }}. Reception sees only the next step.{% if st == 'WAITING' %} You can start the consultation first or write the outcome straight away.{% endif %}</p>
       {# After a rejected save, show what the doctor typed; otherwise show what is stored. #}
       {% set shown = outcome_form if outcome_form else {'summary': a.outcome.summary if a.outcome else '', 'next_step': a.outcome.next_step if a.outcome else '', 'follow_up_note': (a.outcome.follow_up_note or '') if a.outcome else ''} %}
       {% if outcome_error %}
@@ -263,16 +391,18 @@
         <label>Short consultation summary
           <textarea name="summary" rows="4" maxlength="1000" required {% if outcome_error %}aria-invalid="true" aria-describedby="outcome-error"{% endif %}>{{ shown.summary }}</textarea>
         </label>
-        <label>Next step
-          <select name="next_step" required>
-            {% for code, label in next_steps.items() %}
-            <option value="{{ code }}" {{ 'selected' if shown.next_step == code }}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>Follow-up note <span class="muted">(optional)</span>
-          <input name="follow_up_note" maxlength="500" value="{{ shown.follow_up_note }}">
-        </label>
+        <div class="form-pair">
+          <label>Next step
+            <select name="next_step" required>
+              {% for code, label in next_steps.items() %}
+              <option value="{{ code }}" {{ 'selected' if shown.next_step == code }}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Follow-up note <span class="muted">(optional, private)</span>
+            <input name="follow_up_note" maxlength="500" value="{{ shown.follow_up_note }}">
+          </label>
+        </div>
         <button class="btn btn-primary" type="submit">{{ 'Update outcome' if a.outcome else 'Save outcome' }}</button>
       </form>
       {% if a.outcome %}
@@ -282,17 +412,27 @@
       <div class="send-followup" id="follow-up-request">
         <h4>Follow-up with reception</h4>
         <p class="hint"><strong>Saving an outcome does not ask reception to book anything.</strong> To have a follow-up consultation booked, send it to reception here. For a procedure discussion, use “Draft treatment recommendation” and mark it ready.</p>
-        {% if a.followup_request %}
+        {% if handoff != 'CLOSED' %}
+        <ol class="stepper" aria-label="Consultation follow-up">
+          {% for key, label in handoff_steps %}
+          <li class="{{ 'is-current' if key == handoff }}{{ ' is-done' if loop.index0 < (handoff_steps|map('first')|list).index(handoff) }}" {% if key == handoff %}aria-current="step"{% endif %}>{{ label }}</li>
+          {% endfor %}
+        </ol>
+        {% endif %}
+        {% if a.followup_request and a.followup_request.status == 'CLOSED' %}
+        <p class="outcome-saved">Closed: you marked this follow-up as no longer needed. You can request a new one from the Patient overview.</p>
+        {% elif a.followup_request %}
           {% if a.followup_request.followup_appointment %}
           <p class="draft-followup">Follow-up booked by reception: {{ a.followup_request.followup_appointment.start_time|fmt_date }} at {{ a.followup_request.followup_appointment.start_time|fmt_time }} · {{ a.followup_request.followup_appointment.status|replace('_', ' ') }} <span class="muted">(read-only)</span></p>
           {% else %}
-          <p class="outcome-saved">Sent to reception {{ 'today' if a.followup_request.created_at.date() == today else a.followup_request.created_at|fmt_date }} at {{ a.followup_request.created_at|fmt_time }}. Waiting for reception to book it.</p>
+          <p class="outcome-saved">Sent to reception {{ 'today' if a.followup_request.created_at.date() == today else a.followup_request.created_at|fmt_date }} at {{ a.followup_request.created_at|fmt_time }}. Waiting for reception to book it.{% if a.followup_request.summary %} Preferred: {{ a.followup_request.summary }}.{% endif %}</p>
           {% endif %}
         {% elif a.status == 'COMPLETED' and a.outcome and a.outcome.next_step == 'FOLLOW_UP_CONSULTATION' %}
-        <form method="post" action="/doctor/{{ doctor.id }}/appointments/{{ a.id }}/follow-up-request">
+        <form method="post" action="/doctor/{{ doctor.id }}/appointments/{{ a.id }}/follow-up-request" class="form">
+          {{ followup_fields() }}
           <button class="btn btn-primary" type="submit">Send follow-up to reception for scheduling</button>
         </form>
-        <p class="muted small">Reception will see the patient, your name and “Consultation follow-up”. Your summary and note are not shared.</p>
+        <p class="muted small">Reception will see the patient, your name and “Consultation follow-up”. Your summary and note are not shared. No procedure needs to be chosen.</p>
         {% elif a.outcome and a.outcome.next_step == 'FOLLOW_UP_CONSULTATION' %}
         <p class="muted small">Next step is “Follow-up consultation”. Mark the consultation completed, then you can send the follow-up to reception.</p>
         {% else %}
@@ -301,7 +441,7 @@
       </div>
       {% if a.status == 'ARRIVED' %}
       <div class="next-action">
-        <span>{{ 'When the consultation is finished:' if a.outcome else 'You can save an outcome now or after completing the consultation.' }}</span>
+        <span>{{ 'When the consultation is finished:' if a.outcome else 'No outcome saved yet. You can complete without one, but you will be asked to confirm.' }}</span>
         {{ status_form(a, 'COMPLETED', 'Mark completed', 'btn-success') }}
       </div>
       {% endif %}
@@ -310,14 +450,20 @@
       {% endif %}
     </div>
 
-    <div>
+    <div class="consult-section" id="consult-treatment">
       <h3>Draft treatment recommendation</h3>
-      <p class="hint">Chosen by the doctor from the clinic’s approved list. Saved as a draft; reception can see it but cannot change it.</p>
+      <p class="hint">Chosen by the doctor from the clinic’s approved list. Saved as a draft; reception can see the procedure name and its state, never your note.</p>
       {% if a.recommendations %}
       <ul class="draft-list">
         {% for r in a.recommendations %}
         <li class="draft">
           <strong>{{ r.procedure }} <span class="pill pill-{{ r.status|lower }}">{{ recommendation_state(r.status) }}</span></strong>
+          <ol class="stepper is-small" aria-label="Recommendation state">
+            {% set keys = recommendation_steps|map('first')|list %}
+            {% for key, label in recommendation_steps %}
+            <li class="{{ 'is-current' if key == r.status }}{{ ' is-done' if r.status in keys and loop.index0 < keys.index(r.status) }}" {% if key == r.status %}aria-current="step"{% endif %}>{{ label }}</li>
+            {% endfor %}
+          </ol>
           {% if r.doctor_note %}<p>{{ r.doctor_note }}</p>{% endif %}
           <p class="muted">{{ r.doctor.name }} · {{ r.created_at|fmt_date }} at {{ r.created_at|fmt_time }}</p>
           {% if r.status == 'DRAFT' and r.doctor_id == doctor.id %}
@@ -342,7 +488,7 @@
             {% for name in procedures %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
           </select>
         </label>
-        <label>Doctor note <span class="muted">(optional)</span>
+        <label>Doctor note <span class="muted">(optional, private)</span>
           <textarea name="doctor_note" rows="3" maxlength="1000"></textarea>
         </label>
         <button class="btn btn-primary" type="submit">Save draft recommendation</button>
@@ -352,16 +498,150 @@
       {% endif %}
     </div>
   </div>
+
+  {% set ov = overview %}
+  <div class="consult-section patient-overview" id="patient-overview" tabindex="-1">
+    <div class="card-head"><h3>Patient overview</h3><span class="muted">{{ a.patient.name }} · with {{ doctor.name }}</span></div>
+    {% if care_notice %}
+    <div class="alert alert-{{ care_notice[0] }}" id="care-notice" role="{{ 'alert' if care_notice[0] == 'error' else 'status' }}">{{ care_notice[1] }}</div>
+    {% endif %}
+    <div class="overview-grid">
+      <section class="ov-card" aria-labelledby="ov-info">
+        <h4 id="ov-info">Patient information</h4>
+        <dl class="ov-facts">
+          <div><dt>Name</dt><dd>{{ ov.patient.name }}</dd></div>
+          <div><dt>Mobile</dt><dd>{{ ov.patient.mobile }}</dd></div>
+          <div><dt>Email</dt><dd>{{ ov.patient.email or 'Not given' }}</dd></div>
+          <div><dt>Registered</dt><dd>{{ ov.patient.created_at|fmt_date }} {{ ov.patient.created_at.year }}</dd></div>
+          <div><dt>This booking</dt><dd><span class="tag">{{ a.source }}</span>{% if ov.from_waitlist %} <span class="flag">From waitlist</span>{% endif %}</dd></div>
+        </dl>
+        <p class="muted small">Contact and registration details are kept by reception and cannot be changed here.</p>
+      </section>
+
+      <section class="ov-card" aria-labelledby="ov-flags">
+        <h4 id="ov-flags">Operational flags</h4>
+        <form method="post" action="/doctor/{{ doctor.id }}/appointments/{{ a.id }}/care/flags" class="flag-form">
+          {% for code, (label, meaning) in patient_flags.items() %}
+          <label class="check flag-option"><input type="checkbox" name="flags" value="{{ code }}" {{ 'checked' if ov.flags[code] }}>
+            <span><strong>{{ label }}</strong><span class="muted small">Reception sees: {{ meaning }}</span></span></label>
+          {% endfor %}
+          <button class="btn btn-sm" type="submit">Save flags</button>
+        </form>
+        <p class="muted small">Untick to clear. Each change is logged on the patient timeline by name only.</p>
+      </section>
+
+      <section class="ov-card" aria-labelledby="ov-followup">
+        <h4 id="ov-followup">Follow-up</h4>
+        {% if ov.requests %}
+        <ul class="context-list">
+          {% for r in ov.requests %}
+          {% set state = 'SCHEDULED' if r.followup_appointment_id else r.status %}
+          <li class="request-row">
+            <span class="stage request-{{ state|lower }}">{{ ov.request_states.get(state, state) }}</span>
+            <span class="muted">Asked {{ r.created_at|fmt_date }}{% if r.summary %} · {{ r.summary }}{% endif %}</span>
+            {% if r.followup_appointment %}<span>Booked {{ r.followup_appointment.start_time|fmt_date }} at {{ r.followup_appointment.start_time|fmt_time }}</span>{% endif %}
+            {% if r.status == 'READY_FOR_SCHEDULING' and not r.followup_appointment_id %}
+            <form method="post" action="/doctor/{{ doctor.id }}/follow-ups/{{ r.id }}/close" data-confirm="Mark this follow-up as no longer needed? Reception will no longer see it on their list.">
+              <input type="hidden" name="appointment_id" value="{{ a.id }}">
+              <button class="btn btn-sm btn-ghost" type="submit">No longer needed</button>
+            </form>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}<p class="muted small">No follow-up requested for this patient yet.</p>{% endif %}
+        {% if ov.can_request_followup %}
+        <form method="post" action="/doctor/{{ doctor.id }}/appointments/{{ a.id }}/care/follow-up" class="form">
+          {{ followup_fields() }}
+          <button class="btn btn-sm btn-primary" type="submit">Request follow-up</button>
+        </form>
+        <p class="muted small">Sends a request to reception’s Follow-ups list. Nothing is booked until reception schedules it; slots keep your standard length.</p>
+        {% elif a.status not in ('ARRIVED', 'COMPLETED') %}
+        <p class="muted small">A follow-up can be requested once the patient has arrived.</p>
+        {% endif %}
+      </section>
+
+      <section class="ov-card" aria-labelledby="ov-visits">
+        <h4 id="ov-visits">Visits with {{ doctor.name }}</h4>
+        <p class="ov-counts"><span><strong>{{ ov.completed }}</strong> completed</span><span><strong>{{ ov.cancelled }}</strong> cancelled</span><span><strong>{{ ov.no_shows }}</strong> no-show{{ '' if ov.no_shows == 1 else 's' }}</span></p>
+        <p class="small">{% if ov.upcoming %}Next booked: <strong>{{ ov.upcoming.start_time|fmt_date }} at {{ ov.upcoming.start_time|fmt_time }}</strong> · {{ ov.upcoming.status|replace('_', ' ') }}{% else %}<span class="muted">No upcoming appointment with you.</span>{% endif %}</p>
+        <ul class="context-list">
+          {% for h in ov.history %}
+          <li><span>{{ h.start_time|fmt_date }}</span> <span class="muted">{{ h.service.name }}</span> <span class="pill pill-{{ h.status|lower }}">{{ h.status|replace('_', ' ') }}</span>{% if h.id == a.id %} <span class="muted small">this visit</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+      </section>
+
+      <section class="ov-card ov-notes" aria-labelledby="ov-notes">
+        <h4 id="ov-notes">Doctor notes</h4>
+        <p class="private-label">Private doctor notes — not visible to reception or patient.</p>
+        <form method="post" action="/doctor/{{ doctor.id }}/appointments/{{ a.id }}/care/notes" class="form">
+          <label class="sr-only" for="doctor-note-body">Private doctor notes</label>
+          <textarea id="doctor-note-body" name="body" rows="4" maxlength="2000">{{ note_form if note_form is not none else (ov.note.body or '' if ov.note else '') }}</textarea>
+          <button class="btn btn-sm" type="submit">Save notes</button>
+        </form>
+        {% if ov.note %}<p class="muted small">Last updated by {{ doctor.name }}, {{ 'today' if ov.note.updated_at.date() == today else ov.note.updated_at|fmt_date }} at {{ ov.note.updated_at|fmt_time }}.</p>{% endif %}
+      </section>
+
+      <section class="ov-card" aria-labelledby="ov-actions">
+        <h4 id="ov-actions">Quick actions</h4>
+        <form method="post" action="/doctor/{{ doctor.id }}/appointments/{{ a.id }}/care/callback" class="form">
+          <label>Ask reception to call
+            <select name="reason" required>
+              {% for code, label in callback_reasons.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+            </select>
+          </label>
+          <button class="btn btn-sm" type="submit">Send callback request</button>
+        </form>
+        <p class="muted small">Reception sees only the reason chosen above. {{ ov.open_callbacks }} open callback{{ '' if ov.open_callbacks == 1 else 's' }} for this patient.</p>
+        <p class="ov-links"><a href="/patients/{{ a.patient.id }}/timeline">Patient timeline</a> <a href="{{ calendar_href(a) }}">View in calendar</a></p>
+      </section>
+    </div>
+  </div>
+
+  <div class="consult-section patient-context" id="consult-context">
+    <div class="card-head"><h3>Across the clinic</h3><a href="/patients/{{ a.patient.id }}/timeline">Open full patient timeline</a></div>
+    <p class="hint">Operational history only: dates, statuses and markers. Consultation summaries and notes from other visits are not shown here.</p>
+    <div class="context-grid">
+      <div>
+        <h4>Other visits <span class="muted">({{ context.history_total }})</span></h4>
+        <p class="muted small">{{ context.no_shows }} no-show{{ '' if context.no_shows == 1 else 's' }} · {{ context.cancellations }} cancellation{{ '' if context.cancellations == 1 else 's' }}</p>
+        {% if context.history %}
+        <ul class="context-list">
+          {% for h in context.history %}
+          <li><span>{{ h.start_time|fmt_date }} · {{ h.start_time|fmt_time }}</span> <span class="muted">{{ h.doctor.name }} · {{ h.service.name }}</span> <span class="pill pill-{{ h.status|lower }}">{{ h.status|replace('_', ' ') }}</span></li>
+          {% endfor %}
+        </ul>
+        {% else %}<p class="muted small">No other visits recorded.</p>{% endif %}
+      </div>
+      <div>
+        <h4>Front desk</h4>
+        <ul class="context-list">
+          <li><span>Arrival</span> {{ arrival_mark(a) }}</li>
+          <li><span>Callbacks</span> {% if context.callbacks %}<span class="muted">{{ context.open_callbacks }} open · {{ context.callbacks|length - context.open_callbacks }} completed</span>{% else %}<span class="muted">None</span>{% endif %}</li>
+          <li><span>Waitlist</span> {% if context.from_waitlist %}<span class="flag">This visit was booked from the waitlist</span>{% elif context.waitlist %}<span class="muted">{{ context.waitlist|length }} entr{{ 'y' if context.waitlist|length == 1 else 'ies' }} · latest {{ context.waitlist[0].status|lower }}</span>{% else %}<span class="muted">Never waitlisted</span>{% endif %}</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Earlier recommendations</h4>
+        {% if context.recommendations %}
+        <ul class="context-list">
+          {% for r in context.recommendations %}<li><span>{{ r.procedure }}</span> <span class="muted">{{ r.state }} · {{ r.doctor }} · {{ r.created_at|fmt_date }}</span></li>{% endfor %}
+        </ul>
+        {% else %}<p class="muted small">None.</p>{% endif %}
+      </div>
+    </div>
+  </div>
 </section>
 {% endif %}
 {% endif %}
 {% endblock %}
 {% block scripts %}
 {# After an action in the consultation panel, keep that panel in view (also when the page was re-rendered with an error). #}
-{% if selected and (panel_notice or outcome_error) %}
+{% if selected and (panel_notice or outcome_error or care_notice) %}
 <script>
   (function () {
-    var target = document.getElementById("{{ 'outcome-error' if outcome_error else 'consultation' }}");
+    var target = document.getElementById("{{ 'outcome-error' if outcome_error else ('patient-overview' if care_notice else 'consultation') }}");
     if (target) target.scrollIntoView({ block: "start" });
   })();
 </script>

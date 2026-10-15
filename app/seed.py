@@ -14,7 +14,11 @@ from .models import (
     Clinic,
     ConsultationFollowup,
     ConsultationOutcome,
+    ConsultationStart,
     Doctor,
+    DoctorPatientNote,
+    PatientFlag,
+    ProcedurePlan,
     DoctorBlock,
     Notification,
     ProcedureFollowup,
@@ -63,7 +67,7 @@ def reset_demo_data(db: Session) -> dict:
     """
     # Children first, so foreign keys are satisfied on any database.
     for model in (
-        ConsultationFollowup, ProcedureFollowup, Notification, WaitlistEntry, CheckinToken, TimelineEvent, TreatmentRecommendation, ConsultationOutcome, CallLog, CallbackTask, DoctorBlock, Appointment, Slot, Patient,
+        ProcedurePlan, PatientFlag, DoctorPatientNote, ConsultationFollowup, ProcedureFollowup, Notification, WaitlistEntry, CheckinToken, TimelineEvent, TreatmentRecommendation, ConsultationOutcome, ConsultationStart, CallLog, CallbackTask, DoctorBlock, Appointment, Slot, Patient,
         Service, Doctor, Clinic,
     ):
         db.execute(delete(model))

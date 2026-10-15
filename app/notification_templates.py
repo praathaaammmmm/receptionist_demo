@@ -44,6 +44,30 @@ TEMPLATES = {
             "It is not reserved for you yet. If you would like it, please call us on {phone}."
         ),
     },
+    "FOLLOWUP_SCHEDULING": {
+        "label": "Follow-up scheduling",
+        "subject": "Arranging your follow-up at {clinic}",
+        "body": (
+            "Hello {patient}, {clinic} would like to arrange your follow-up appointment with {doctor}. "
+            "Please call us on {phone} to choose a time."
+        ),
+    },
+    "PROCEDURE_DISCUSSION": {
+        "label": "Planned appointment discussion",
+        "subject": "Your planned appointment at {clinic}",
+        "body": (
+            "Hello {patient}, {clinic} would like to talk with you about the appointment {doctor} has planned with you. "
+            "Please call us on {phone} when convenient."
+        ),
+    },
+    "FOLLOWUP_BOOKED": {
+        "label": "Follow-up booking notice",
+        "subject": "Your appointment at {clinic} has been booked",
+        "body": (
+            "Hello {patient}, your appointment at {clinic} has been booked for {date} at {time} with {doctor}. "
+            "We will confirm it shortly. To change it, call us on {phone}."
+        ),
+    },
     "CALLBACK_ACKNOWLEDGEMENT": {
         "label": "Callback acknowledgement",
         "subject": "We have received your request",
