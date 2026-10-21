@@ -211,6 +211,10 @@ code { background: var(--cream-deep); padding: 1px 6px; border-radius: var(--rad
 .btn-danger, .btn-ghost-danger { border-color: transparent; color: var(--clay-ink); }
 .btn-danger:hover, .btn-ghost-danger:hover { background: var(--clay-soft); border-color: var(--clay); color: var(--clay-ink); }
 /* Busy: shown the moment a form is submitted, so a click never seems to do nothing. */
+/* Outline button on a navy header (assistant page) */
+.btn-on-dark { background: transparent; border-color: rgba(252, 248, 242, .45); color: var(--ivory); }
+.btn-on-dark:hover { background: var(--ivory); border-color: var(--ivory); color: var(--navy); }
+.btn-on-dark:focus-visible { outline-color: var(--teal); }
 .btn.is-loading { color: transparent !important; pointer-events: none; }
 .btn.is-loading::after {
   content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%;
@@ -428,6 +432,8 @@ input[type="radio"], input[type="checkbox"] { width: auto; accent-color: var(--t
 .pill-ready_for_scheduling::before { background: transparent; box-shadow: inset 0 0 0 2px currentColor; }
 .pill-scheduled { background: var(--teal-soft); color: var(--teal-ink); }
 .doctor-flag.is-followup { border-left-color: var(--navy); color: var(--navy); background: #DDE3EE; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.doctor-flag .followup-link { margin-left: 8px; font-weight: 600; color: inherit; text-decoration: underline; }
+.doctor-flag .flag-no-request { color: var(--clay-ink); font-weight: 600; }
 .draft-action { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; }
 .draft-followup { margin-top: 8px; font-weight: 600; color: var(--navy); }
 .followup-list { list-style: none; margin: 0; padding: 0; display: grid; }
@@ -833,8 +839,8 @@ label.chip.is-closed:hover { border-color: var(--line-strong); }
 .appt-meta .stage { display: table; margin: 6px 0 0; }
 .arrival { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; font-weight: 600; color: var(--muted); }
 .arrival::before { content: ""; width: 8px; height: 8px; border-radius: 50%; border: 2px solid currentColor; }
-.arrival-qr, .arrival-arrived { color: var(--teal-ink); }
-.arrival-qr::before, .arrival-arrived::before { background: currentColor; }
+.arrival-qr, .arrival-arrived, .arrival-doctor { color: var(--teal-ink); }
+.arrival-qr::before, .arrival-arrived::before, .arrival-doctor::before { background: currentColor; }
 .flag-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .flag { display: inline-block; padding: 2px 8px; border-radius: var(--radius-sm); background: var(--clay-soft); color: var(--clay-ink); font-size: .74rem; font-weight: 600; }
 
@@ -910,6 +916,7 @@ label.chip.is-closed:hover { border-color: var(--line-strong); }
 .ov-card h4 { margin: 0; font-size: .95rem; color: var(--navy); }
 .ov-card .form { gap: 10px; }
 .ov-card .btn { justify-self: start; }
+.ov-card .send-to-reception .btn { justify-self: stretch; padding-block: 10px; font-size: .95rem; }
 .ov-facts { margin: 0; display: grid; gap: 6px; }
 .ov-facts div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; font-size: .9rem; }
 .ov-facts dt { color: var(--muted); font-weight: 600; font-size: .8rem; }
@@ -959,6 +966,16 @@ label.chip.is-closed:hover { border-color: var(--line-strong); }
   .alert.toast { animation: toast-in 200ms var(--ease) backwards; }
   .slot-grid > * { animation: fade 180ms var(--ease) backwards; }
 }
+/* "Leave this conversation?" before Back to dashboard (assistant and call demo) */
+.leave-dialog { width: min(420px, calc(100vw - 32px)); padding: 22px 22px 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--ivory); color: var(--ink); box-shadow: var(--shadow-lift); }
+.leave-dialog::backdrop { background: rgba(9, 29, 62, .45); }
+.leave-dialog h2 { font-size: 1.25rem; margin: 0 0 6px; }
+.leave-dialog p { color: var(--muted); margin: 0; }
+.leave-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+@media (prefers-reduced-motion: no-preference) {
+  .leave-dialog[open] { animation: rise 200ms var(--ease); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
@@ -1072,3 +1089,16 @@ label.chip.is-closed:hover { border-color: var(--line-strong); }
   .brand .tag { display: none; }
   .nav-link { padding: 8px 10px; }
 }
+
+/* Doctor-side booking confirmation: the booking's current state and its one next step. */
+.booking-state { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 12px 0; padding: 12px 16px; border-left: 3px solid var(--line-strong); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.booking-state p { margin: 0; }
+.booking-state.is-pending { background: var(--amber-soft); color: var(--amber-ink); border-left-color: currentColor; }
+.booking-state.is-confirmed { background: var(--teal-soft); color: var(--teal-ink); border-left-color: var(--teal-strong); }
+.booking-state-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pending-list { margin: 0 0 14px; padding: 12px 16px; background: var(--amber-soft); border-radius: var(--radius-sm); }
+.pending-list h3 { margin: 0 0 8px; font-size: .9rem; color: var(--amber-ink); }
+.pending-list ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pending-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.booking-state.is-arrived { background: var(--ivory); border-left-color: var(--teal-strong); }
+.booking-state .demo-arrival-note { flex-basis: 100%; color: inherit; opacity: .85; }

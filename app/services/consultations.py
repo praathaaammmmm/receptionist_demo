@@ -86,10 +86,40 @@ def awaiting_confirmation(db: Session, doctor_id: int, now=None) -> int:
 
 
 def set_status(db: Session, doctor_id: int, appointment_id: int, new_status: str) -> Appointment:
-    appointment_for_doctor(db, doctor_id, appointment_id)
+    appointment = appointment_for_doctor(db, doctor_id, appointment_id)
     if new_status not in DOCTOR_STATUSES:
-        raise NotPermittedError("Confirming and cancelling bookings is done at reception.")
+        raise NotPermittedError("Use “Confirm appointment” to confirm a booking. Cancelling is done at reception.")
+    if new_status == STATUS_ARRIVED and appointment.status == STATUS_PENDING:
+        raise ValidationError("Confirm this appointment before marking the patient arrived.")
     return appointments.set_status(db, appointment_id, new_status, actor=SOURCE_DOCTOR)
+
+
+def confirm_appointment(db: Session, doctor_id: int, appointment_id: int) -> tuple[Appointment, bool]:
+    """The assigned doctor confirms their own PENDING booking, as reception would. An operational
+    scheduling step only. Returns (appointment, changed); confirming twice changes nothing, so the
+    confirmation notification and timeline entry exist once."""
+    appointment = appointment_for_doctor(db, doctor_id, appointment_id)
+    if appointment.status == STATUS_CONFIRMED:
+        return appointment, False
+    if appointment.status != STATUS_PENDING:
+        current = appointment.status.replace("_", "-").lower()
+        raise ValidationError(f"Only a pending appointment can be confirmed. This one is {current}.")
+    return appointments.set_status(db, appointment_id, STATUS_CONFIRMED, actor=SOURCE_DOCTOR), True
+
+
+def pending_today(db: Session, doctor_id: int, now=None) -> list[Appointment]:
+    """Today's bookings for this doctor that nobody has confirmed yet, so the doctor can confirm them."""
+    start, end = utils.day_bounds((now or utils.now()).date())
+    stmt = (
+        select(Appointment)
+        .options(joinedload(Appointment.patient), joinedload(Appointment.service))
+        .where(
+            Appointment.doctor_id == doctor_id, Appointment.start_time >= start, Appointment.start_time < end,
+            Appointment.status == STATUS_PENDING,
+        )
+        .order_by(Appointment.start_time, Appointment.id)
+    )
+    return list(db.scalars(stmt))
 
 
 def start_consultation(db: Session, doctor_id: int, appointment_id: int) -> ConsultationStart:

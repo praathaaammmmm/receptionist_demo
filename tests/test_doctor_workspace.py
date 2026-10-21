@@ -108,7 +108,7 @@ def test_next_patient_prefers_the_one_in_consultation_then_waiting_then_upcoming
 
     doctor_post(client, f"appointments/{day['waiting']['id']}/status", status="NO_SHOW")
     card = next_card(workspace(client))
-    assert "Demo Patient One" in card and ">Mark arrived</button>" in card  # Confirmed → Mark arrived
+    assert "Demo Patient One" in card and ">Mark patient arrived</button>" in card  # Confirmed → Mark arrived
 
 
 def test_next_patient_card_masks_the_mobile_and_shows_operational_flags_only(client, day):

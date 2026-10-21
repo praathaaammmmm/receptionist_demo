@@ -10,9 +10,14 @@
   const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const QUIET = new Set(["reset", "skip", "more", "change_date", "change_time", "waitlist"]);
 
+  const doneActions = document.getElementById("done-actions");
+
   let state = null;
   let lastOptions = [];
   let busy = false;
+  // A chat is "active" once the visitor has said something and it has not ended in a booking,
+  // callback or waitlist request. Leaving an active chat asks first.
+  let active = false;
 
   function el(tag, props, ...children) {
     const node = Object.assign(document.createElement(tag), props || {});
@@ -50,7 +55,7 @@
     lastOptions = options;
     optionsBox.replaceChildren();
     for (const option of options) {
-      const quiet = QUIET.has(option.action) || option.label === "No thanks" || option.label === "Speak to a person";
+      const quiet = QUIET.has(option.action) || (option.action === "intent" && option.value === "human");
       const button = el("button", {
         type: "button",
         className: "chat-option" + (quiet ? " is-quiet" : ""),
@@ -93,6 +98,9 @@
     if (reply.callback) {
       addReceipt("Callback request", [["Reference", reply.callback.reference], ["We will call", reply.callback.mobile]], reply.callback.status);
     }
+    const finished = !!(reply.booking || reply.callback || reply.waitlist);
+    if (finished) active = false;
+    doneActions.hidden = !finished;
     renderOptions(reply.options);
     configureInput(reply.input || {});
   }
@@ -100,7 +108,11 @@
   async function send(payload, echo) {
     if (busy) return;
     setBusy(true);
-    if (echo) addMessage(echo, "user");
+    if (echo) {
+      addMessage(echo, "user");
+      active = true;
+      doneActions.hidden = true;
+    }
     const typing = el("div", { className: "typing", ariaLabel: "Assistant is replying" }, el("i"), el("i"), el("i"));
     log.append(typing);
     scrollDown();
@@ -135,6 +147,16 @@
     input.value = "";
     send({ text }, text);
   });
+
+  document.getElementById("chat-again").addEventListener("click", () => {
+    log.replaceChildren();
+    doneActions.hidden = true;
+    active = false;
+    state = null;
+    send({ action: "start" });
+  });
+  // The website assistant keeps no server-side log, so leaving only needs the visitor's say-so.
+  window.LeaveGuard({ isActive: () => active, beforeLeave: async () => {} });
 
   send({ action: "start" });
 })();

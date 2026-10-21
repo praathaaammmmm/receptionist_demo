@@ -1,0 +1,138 @@
+/* Browser voice agent demo (/voice-agent-demo). Reuses tokens from app.css and the transcript styles from assistant.css. */
+.va-page { min-height: 100vh; display: flex; flex-direction: column; background: var(--ivory); }
+.va-page *, .va-page *::before, .va-page *::after { min-width: 0; }
+
+.va-top { width: 100%; max-width: 1280px; margin: 0 auto; padding: 14px 16px 4px; display: grid; gap: 6px; }
+.va-top-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.va-top h1 { font-family: var(--serif); font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 500; line-height: 1.15; margin-top: 8px; }
+.va-subtitle { color: var(--muted); }
+
+.va-lang { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); overflow: hidden; padding: 0; margin: 0; }
+.va-lang-choice { position: relative; display: block; cursor: pointer; }
+.va-lang-choice input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.va-lang-choice span { display: block; padding: 7px 14px; text-align: center; font-weight: 600; font-size: .9rem; color: var(--navy); transition: background-color var(--t), color var(--t); }
+.va-lang-choice + .va-lang-choice span { border-left: 1px solid var(--line-strong); }
+.va-lang-choice input:checked + span { background: var(--navy); color: var(--ivory); }
+.va-lang-choice input:focus-visible + span { outline: 2px solid var(--teal-ink); outline-offset: -3px; }
+
+.va-layout { flex: 1; width: 100%; max-width: 1280px; margin: 0 auto; padding: 12px 16px 28px; display: grid; gap: 20px; align-content: start; }
+@media (min-width: 980px) {
+  .va-layout { grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr); align-items: start; }
+  .va-team { position: sticky; top: 16px; }
+}
+.va-call { display: grid; gap: 14px; }
+
+/* Status bar */
+.va-statusbar { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; padding: 12px 16px; background: var(--navy); color: var(--ivory); border-radius: var(--radius); }
+.va-call-status, .va-audio-status { display: inline-flex; align-items: center; gap: 8px; font-size: .86rem; font-weight: 600; }
+.va-audio-status { margin-left: auto; padding: 5px 12px; border: 1px solid var(--navy-line); border-radius: 999px; }
+.va-timer { font-family: var(--serif); font-size: 1.5rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.va-statusbar .status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--navy-muted); flex: none; }
+.va-call-status[data-state="live"] .status-dot { background: var(--teal); box-shadow: 0 0 0 4px rgba(58, 179, 156, .22); }
+.va-call-status[data-state="ended"] .status-dot { background: var(--clay); }
+.va-audio-status[data-state="listening"] { background: var(--teal); border-color: var(--teal); color: var(--navy); }
+.va-audio-status[data-state="listening"] .status-dot { background: var(--navy); animation: va-pulse 1s var(--ease) infinite alternate; }
+.va-audio-status[data-state="speaking"] .status-dot { background: var(--teal); animation: va-pulse .6s var(--ease) infinite alternate; }
+.va-audio-status[data-state="thinking"] .status-dot, .va-audio-status[data-state="transcribing"] .status-dot { background: #E0B356; }
+.va-audio-status[data-state="text-only"], .va-audio-status[data-state="muted"] { color: var(--navy-muted); }
+.va-audio-status[data-state="ended"] .status-dot { background: var(--clay); }
+@keyframes va-pulse { from { opacity: .35; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .va-audio-status .status-dot { animation: none !important; } }
+
+/* Start and demo settings */
+.va-start { display: grid; gap: 10px; justify-items: start; }
+.va-start-btn { padding: 11px 26px; font-size: 1rem; }
+.va-settings { width: 100%; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--cream); padding: 8px 14px; }
+.va-settings summary { cursor: pointer; font-weight: 600; font-size: .92rem; }
+.va-settings-grid { display: grid; gap: 10px; margin: 10px 0 6px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.va-settings-grid label { display: grid; gap: 4px; font-size: .84rem; font-weight: 600; }
+.va-settings-grid select { width: 100%; }
+.va-context { margin: 0; }
+
+/* Transcript */
+.va-chat { margin-top: 0; }
+.va-log { min-height: 260px; max-height: clamp(260px, calc(100vh - 450px), 540px); }
+.va-empty { color: var(--muted); text-align: center; margin: auto; max-width: 42ch; }
+.va-log .msg-system { align-self: center; max-width: 100%; padding: 6px 12px; font-size: .82rem; color: var(--muted); background: transparent; border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); }
+.va-log .msg-emergency { border-left-color: var(--clay); background: var(--clay-soft); color: var(--clay-ink); font-weight: 600; }
+
+.va-heard { margin: 0 16px 10px; padding: 10px 14px; border: 1px solid var(--teal-ink); border-radius: var(--radius-sm); background: var(--teal-soft); }
+.va-heard-label { font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--teal-ink); }
+.va-heard-label { display: block; }
+.va-heard-text { display: block; width: 100%; margin-top: 6px; font: inherit; font-size: 1.02rem; resize: vertical; min-height: 2.8em; }
+.va-heard-warning { margin-top: 6px; padding: 6px 10px; border-left: 3px solid var(--clay); background: var(--clay-soft); color: var(--clay-ink); font-weight: 600; font-size: .9rem; }
+.va-heard-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.va-heard-meta { margin-top: 4px; }
+.va-lang-now { font-size: .86rem; color: var(--navy-muted); }
+.va-lang-now strong { color: var(--ivory); }
+.va-mic[data-stage="transcribing"] { background: #E0B356; color: var(--navy); }
+.va-demo-details { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 12px; background: var(--ivory); }
+.va-demo-details summary { cursor: pointer; font-weight: 600; font-size: .92rem; }
+.va-demo-details .va-facts { margin-top: 6px; }
+
+/* Microphone, typed input and End call */
+.va-dock { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--cream); }
+.va-mic { display: inline-flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 20px; border: 0; border-radius: 999px; background: var(--navy); color: var(--ivory); font: inherit; font-weight: 700; font-size: 1rem; cursor: pointer; transition: background-color var(--t), box-shadow var(--t), transform var(--t); }
+.va-mic svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.va-mic:hover:not(:disabled) { background: var(--navy-raised); }
+.va-mic:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
+.va-mic[aria-pressed="true"] { background: var(--teal); color: var(--navy); box-shadow: 0 0 0 6px rgba(58, 179, 156, .25); }
+.va-mic:disabled { opacity: .45; cursor: not-allowed; }
+.va-form { display: flex; gap: 8px; }
+.va-form input { flex: 1; min-width: 0; }
+.va-end { min-height: 52px; background: var(--clay); border-color: var(--clay); color: var(--ivory); font-weight: 700; }
+.va-end:hover:not(:disabled) { background: var(--clay-ink); border-color: var(--clay-ink); color: var(--ivory); }
+.va-end:disabled:hover { background: var(--clay); color: var(--ivory); }
+.va-mic-note { padding: 0 16px 12px; margin: 0; background: var(--cream); }
+.va-mic-note.is-warning { color: var(--clay-ink); }
+
+.va-audio-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.va-audio-controls .btn[aria-pressed="true"] { background: var(--navy); color: var(--ivory); }
+.va-voice-name { margin: 0 0 0 auto; overflow-wrap: anywhere; }
+
+.va-scenarios h2, .va-team h2 { font-family: var(--serif); font-size: 1.25rem; font-weight: 500; }
+.va-scenario-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+/* What the clinic team sees */
+.va-team { display: grid; gap: 14px; padding: 18px; background: var(--cream); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.va-facts { display: grid; gap: 0; margin: 0; }
+.va-facts > div { display: grid; grid-template-columns: 9.5em minmax(0, 1fr); gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.va-facts dt { font-size: .78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
+.va-facts dd { margin: 0; overflow-wrap: anywhere; }
+.va-facts dd.is-urgent { color: var(--clay-ink); font-weight: 700; }
+.va-result { padding: 12px 14px; border-left: 3px solid var(--teal-strong); background: var(--teal-soft); border-radius: var(--radius-sm); display: grid; gap: 8px; justify-items: start; }
+.va-result-text { font-weight: 600; color: #0B3F37; }
+.va-links { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.va-footer { width: 100%; max-width: 1280px; margin: 0 auto; padding: 16px 16px 28px; border-top: 1px solid var(--line); color: var(--muted); font-size: .82rem; }
+.va-footer ul { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; }
+
+/* Phones: stack, keep the microphone and End call within reach. */
+@media (max-width: 720px) {
+  .va-top { padding: 10px 16px 0; }
+  .va-lang { width: 100%; }
+  .va-lang-choice span { padding: 8px 6px; }
+  .va-statusbar { padding: 10px 12px; }
+  .va-audio-status { margin-left: 0; }
+  .va-chat { overflow: visible; } /* lets the control dock stick to the bottom of the screen */
+  .va-dock { position: sticky; bottom: 0; z-index: 5; grid-template-columns: minmax(0, 1fr) auto; box-shadow: 0 -8px 20px -14px rgba(9, 29, 62, .4); }
+  .va-mic { grid-column: 1; justify-content: center; }
+  .va-end { grid-column: 2; grid-row: 1; }
+  .va-form { grid-column: 1 / -1; }
+  .va-log { min-height: 240px; max-height: 52vh; }
+  .va-facts > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .va-voice-name { margin-left: 0; flex-basis: 100%; }
+}
+
+/* Phase 3.1: stages and the developer timing panel */
+.va-audio-status[data-state="understanding"] .status-dot, .va-audio-status[data-state="preparing"] .status-dot { background: #E0B356; animation: va-pulse .8s var(--ease) infinite alternate; }
+.va-mic[data-stage="listening"] { background: var(--clay); color: var(--ivory); }
+.va-timing-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: .86rem; }
+.va-timing-list li { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; border-bottom: 1px dashed var(--line); padding: 3px 0; }
+.va-timing-list strong { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+/* Demo-only reference voice selector */
+.va-voice-mode { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); padding: 6px 10px; margin: 0; flex-basis: 100%; }
+.va-voice-mode legend { font-size: .8rem; font-weight: 700; padding: 0 4px; }
+.va-voice-mode label { display: inline-flex; gap: 6px; align-items: center; font-size: .9rem; }
+.va-voice-notice { flex-basis: 100%; margin: 0; padding: 6px 10px; border-left: 3px solid var(--clay); background: var(--clay-soft); color: var(--clay-ink); font-size: .88rem; font-weight: 600; }

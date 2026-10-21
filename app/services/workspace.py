@@ -19,6 +19,7 @@ from ..models import (
     FOLLOWUP_CLOSED,
     RECOMMENDATION_READY,
     FOLLOWUP_STATES,
+    SOURCE_DOCTOR,
     STATUS_ARRIVED,
     STATUS_CANCELLED,
     STATUS_COMPLETED,
@@ -93,6 +94,9 @@ def arrival(appointment: Appointment) -> dict:
     if token is not None and token.used_at is not None:
         return {"state": "qr", "label": f"QR check-in {token.used_at.strftime('%I:%M %p').lstrip('0')}"}
     if appointment.status in (STATUS_ARRIVED, STATUS_COMPLETED):
+        if appointment.arrived_by == SOURCE_DOCTOR:
+            at = f" {appointment.arrived_at.strftime('%I:%M %p').lstrip('0')}" if appointment.arrived_at else ""
+            return {"state": "doctor", "label": f"Marked arrived by doctor{at}"}
         return {"state": "arrived", "label": "Arrived"}
     if appointment.status == STATUS_NO_SHOW:
         return {"state": "absent", "label": "Did not arrive"}

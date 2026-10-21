@@ -22,6 +22,10 @@ from sqlalchemy.orm import Session, joinedload
 from .. import config, utils
 from ..models import (
     CONSULTATION_FOLLOWUP_LABEL,
+    FOLLOWUP_AWAITING,
+    FOLLOWUP_CLOSED,
+    FOLLOWUP_COMPLETED,
+    FOLLOWUP_CONTACT,
     FOLLOWUP_LABEL,
     RECOMMENDATION_DRAFT,
     FOLLOWUP_OPEN_STATES,
@@ -213,6 +217,28 @@ def schedule_consultation(db: Session, request_id: int, slot_id: int, staff_note
         db.commit()
         raise ValidationError("A follow-up is already booked for this request.") from None
     return appointments.get_appointment(db, appointment.id)
+
+
+# What the reception patient page calls each state of a request that has reached reception.
+PATIENT_PAGE_STATES = {
+    RECOMMENDATION_READY: "Ready for reception",
+    FOLLOWUP_CONTACT: "Contact patient",
+    FOLLOWUP_AWAITING: "Awaiting patient response",
+    RECOMMENDATION_SCHEDULED: "Scheduled",
+    FOLLOWUP_COMPLETED: "Completed",
+    FOLLOWUP_CLOSED: "Closed",
+}
+
+
+def sent_for_patient(db: Session, patient_id: int) -> list[ConsultationFollowup]:
+    """Follow-up requests a doctor has actually sent to reception for this patient, newest first.
+    Drafts stay with the doctor, so they are left out. Staff-safe: no clinical text is loaded."""
+    stmt = (
+        _requests()
+        .where(ConsultationFollowup.patient_id == patient_id, ConsultationFollowup.status != RECOMMENDATION_DRAFT)
+        .order_by(ConsultationFollowup.created_at.desc(), ConsultationFollowup.id.desc())
+    )
+    return list(db.scalars(stmt))
 
 
 # ---- One worklist for reception, covering both kinds ------------------------------------------------

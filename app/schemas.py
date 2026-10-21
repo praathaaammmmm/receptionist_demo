@@ -1,4 +1,6 @@
 """Request bodies and JSON shapes for the booking API."""
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from . import utils
@@ -49,8 +51,46 @@ class CallbackStatusUpdate(BaseModel):
     notes: str | None = None
 
 
+CallLanguage = Literal["en", "hi", "hinglish"]
+
+
 class SpeechRequest(BaseModel):
     text: str = Field(default="", max_length=2000)
+    language: CallLanguage = "en"
+
+
+class CallStart(BaseModel):
+    language: CallLanguage = "en"
+
+
+class CallEnd(BaseModel):
+    language: CallLanguage | None = None
+
+
+class VoiceAgentStart(BaseModel):
+    """A new browser voice agent demo call. The overrides only simulate; they change no clinic settings."""
+
+    language: CallLanguage = "en"
+    transfer: Literal["auto", "available", "unavailable"] = "auto"
+    caller_id: Literal["unknown", "present"] = "unknown"
+    clinic: Literal["auto", "open", "closed"] = "auto"
+
+
+class VoiceAgentSpeech(SpeechRequest):
+    """One sentence of a voice agent reply. "reference" asks for the optional consented reference voice."""
+
+    voice: Literal["standard", "reference"] = "standard"
+
+
+class VoiceAgentMessage(BaseModel):
+    text: str = Field(default="", max_length=500)
+    language: CallLanguage | None = None
+    # The original transcript when the caller spoke and then edited it (context for the language model only).
+    heard: str | None = Field(default=None, max_length=500)
+    # Spoken turns: the transcription confidence, and whether the caller reviewed a low-confidence transcript.
+    # Unreviewed low-confidence speech is never acted on.
+    speech_confidence: Literal["high", "low"] | None = None
+    reviewed: bool = False
 
 
 class AssistantMessage(BaseModel):
@@ -58,6 +98,10 @@ class AssistantMessage(BaseModel):
     action: str | None = Field(default=None, max_length=40)
     value: str | int | None = None
     state: dict | None = None
+
+
+class CallMessage(AssistantMessage):
+    language: CallLanguage = "en"
 
 
 def patient_out(p: Patient) -> dict:
@@ -144,6 +188,7 @@ def call_out(c: CallLog) -> dict:
         "outcome": c.outcome,
         "appointment_id": c.appointment_id,
         "callback_task_id": c.callback_task_id,
+        "language": c.language or "en",
         "is_demo": True,
     }
 

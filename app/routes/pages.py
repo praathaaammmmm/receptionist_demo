@@ -15,6 +15,7 @@ from ..models import (
     CALLBACK_COMPLETED,
     CALLBACK_IN_PROGRESS,
     NEXT_STEPS,
+    FOLLOWUP_OPEN_STATES,
     FOLLOWUP_STATES,
     RECOMMENDATION_STATES,
     STATUS_CANCELLED,
@@ -71,6 +72,9 @@ NOTICES = {
     "callback_completed": ("success", "Callback task completed."),
     "arrived": ("success", "Patient marked as arrived."),
     "completed": ("success", "Consultation marked as completed."),
+    "doctor_confirmed": ("success", "Appointment confirmed. Reception, the calendar and the patient timeline now show it as confirmed."),
+    "already_confirmed": ("success", "This appointment was already confirmed. Nothing was changed or sent again."),
+    "arrived_by_doctor": ("success", "Patient marked arrived. You can now start the consultation, save an outcome or send a follow-up to reception."),
     "consultation_started": ("success", "Consultation started. Write the outcome below; it can be saved now or after completing."),
     "no_show": ("success", "Booking marked as no-show."),
     "outcome_saved": ("success", "Consultation outcome saved. The summary, next step and note below are what is stored."),
@@ -81,7 +85,7 @@ NOTICES = {
     "care_flags_unchanged": ("success", "No flag changes to save."),
     "care_note": ("success", "Private doctor notes saved. Only you can see them, here in the doctor workspace."),
     "care_callback": ("success", "Callback request sent to reception with the reason you chose."),
-    "care_followup": ("success", "Follow-up request sent to reception. Nothing is booked until reception schedules it."),
+    "care_followup": ("success", "Follow-up sent to reception. It is ready for scheduling."),
     "care_followup_closed": ("success", "Follow-up request closed. It is no longer on reception’s list."),
     "notification_sent": ("success", "Marked as sent (simulated). No message left this app."),
     "notification_delivered": ("success", "Marked as delivered (simulated)."),
@@ -239,6 +243,7 @@ def patient_timeline(request: Request, patient_id: int, db: Session = Depends(ge
         response.status_code = exc.status_code
         return response
     events = timeline.build(db, patient)
+    sent = followups.sent_for_patient(db, patient.id)
     now = utils.now()
     upcoming = [
         a for a in appointments.list_today(db, now) + appointments.list_upcoming(db, now)
@@ -256,6 +261,10 @@ def patient_timeline(request: Request, patient_id: int, db: Session = Depends(ge
         qr_bookings=sorted((a for a in upcoming if checkin.can_generate(a, now)), key=lambda a: a.start_time),
         open_callbacks=[t for t in callbacks.list_active(db) if t.mobile == patient.mobile],
         recommendations=consultations.recommendations_by_patient(db, [patient.id]).get(patient.id, []),
+        followup_requests=sent,
+        followup_doctor_ids={r.doctor_id for r in sent},
+        followup_states=followups.PATIENT_PAGE_STATES,
+        followup_open=FOLLOWUP_OPEN_STATES,
     )
 
 

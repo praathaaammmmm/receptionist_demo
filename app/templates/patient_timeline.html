@@ -41,7 +41,14 @@
     {% endfor %}
   </ul>
   {% endif %}
-  {{ reception_flags(patient, block=true) }}
+  {{ reception_flags(patient, block=true, sent_by=followup_doctor_ids) }}
+  {% for r in followup_requests %}
+  <p class="doctor-flag is-followup is-block followup-request" data-followup-request="{{ r.id }}">
+    Follow-up request: {{ r.type_label }} · <strong>{{ followup_states.get(r.status, r.status|replace('_', ' ')|capitalize) }}</strong>{% if r.followup_appointment %} · booked {{ r.followup_appointment.start_time|fmt_date }} at {{ r.followup_appointment.start_time|fmt_time }}{% endif %}
+    <a class="followup-link" href="/follow-ups{% if r.status in followup_open %}?kind=consultation&amp;schedule={{ r.id }}{% endif %}">View follow-up</a>
+    <span>{{ r.doctor.name }}, sent {{ r.created_at|fmt_date }} · sent by the doctor, read-only</span>
+  </p>
+  {% endfor %}
   {% for r in recommendations %}
   <p class="doctor-flag is-recommendation is-block" title="Entered by the doctor. Read-only.">
     Doctor recommendation: {{ r.procedure }} · {{ r.status|replace('_', ' ') }}{% if r.followup %} · follow-up booked {{ r.followup.appointment.start_time|fmt_date }} at {{ r.followup.appointment.start_time|fmt_time }}{% endif %}

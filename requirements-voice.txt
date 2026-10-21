@@ -1,2 +1,6 @@
 # Optional: natural-sounding local voice for /call-demo. See README, "Voice-call simulation".
 piper-tts>=1.8
+# Optional: local microphone transcription for /voice-agent-demo. See README, "Voice Agent Phase 3".
+faster-whisper>=1.1
+# Optional: language model for the voice agent when VOICE_AGENT_LLM_PROVIDER=anthropic.
+anthropic>=1

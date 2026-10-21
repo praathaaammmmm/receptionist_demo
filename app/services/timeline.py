@@ -245,8 +245,13 @@ def build(db: Session, patient: Patient, now=None) -> list[dict]:
                 detail += f" Staff note: {task.notes}"
         else:
             detail = None
+        title = None
+        if change.kind == "APPOINTMENT_ARRIVED" and change.source == SOURCE_DOCTOR and change.appointment_id in appointment_by_id:
+            # The doctor's manual demo arrival, kept apart from reception and QR check-in.
+            title = f"Patient marked arrived by {appointment_by_id[change.appointment_id].doctor.name}"
+            detail = f"Marked arrived by doctor. {detail}"
         events.append(
-            _event(change.kind, change.occurred_at, change.source, detail=change.detail or detail, order=change.id,
+            _event(change.kind, change.occurred_at, change.source, detail=change.detail or detail, order=change.id, title=title,
                    appointment_id=change.appointment_id, callback_task_id=change.callback_task_id)
         )
     for call in calls:

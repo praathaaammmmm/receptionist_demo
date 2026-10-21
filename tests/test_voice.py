@@ -14,8 +14,8 @@ FAKE_WAV = b"RIFF\x24\x00\x00\x00WAVEfmt fake-audio"
 def voice_installed(monkeypatch):
     """Pretend the voice pack is installed, without loading a real model."""
     spoken = []
-    monkeypatch.setattr(tts, "available", lambda: True)
-    monkeypatch.setattr(tts, "synthesize", lambda text: spoken.append(text) or FAKE_WAV)
+    monkeypatch.setattr(tts, "available", lambda language="en": True)
+    monkeypatch.setattr(tts, "synthesize", lambda text, language="en": spoken.append(text) or FAKE_WAV)
     return spoken
 
 
@@ -73,8 +73,8 @@ def test_real_voice_pack_produces_playable_audio():
 
 def test_speaker_is_resolved_by_name_or_number(monkeypatch, tmp_path):
     monkeypatch.setattr("app.config.VOICE_DIR", tmp_path)
-    monkeypatch.setattr("app.config.VOICE_NAME", "multi")
+    monkeypatch.setattr("app.config.VOICE_ENGLISH", "multi")
     (tmp_path / "multi.onnx.json").write_text('{"speaker_id_map": {"SVBI": 2, "ASI": 10}}')
     for wanted, expected in (("", None), ("SVBI", 2), ("10", 10), ("nobody", None)):
-        monkeypatch.setattr("app.config.VOICE_SPEAKER", wanted)
-        assert tts.speaker_id() == expected
+        monkeypatch.setattr("app.config.VOICE_ENGLISH_SPEAKER", wanted)
+        assert tts.speaker_id("en") == expected

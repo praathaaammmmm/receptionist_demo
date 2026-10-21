@@ -1,6 +1,6 @@
 # Smriti Raj Dentistry — AI Dental Front Desk Demo
 
-## Phase 1: Booking Foundation · Phase 2: Appointment Assistant and Callback Tasks · Phase 3: Voice-Call Simulation · Phase 5: Doctor Consultation Workspace · Phase 6: Doctor Schedule Calendar · Phase 7: Patient Timeline · Phase 8: QR Appointment Check-in · Phase 9: Waitlist and Cancellation Fill · Phase 10: Notification Centre · Phase 11: Admin Analytics · Phase 12: Procedure Follow-up Scheduler · Phase 13: Navigation, Button and Settings UX · Doctor Workspace upgrade
+## Phase 1: Booking Foundation · Phase 2: Appointment Assistant and Callback Tasks · Phase 3: Voice-Call Simulation · Phase 5: Doctor Consultation Workspace · Phase 6: Doctor Schedule Calendar · Phase 7: Patient Timeline · Phase 8: QR Appointment Check-in · Phase 9: Waitlist and Cancellation Fill · Phase 10: Notification Centre · Phase 11: Admin Analytics · Phase 12: Procedure Follow-up Scheduler · Phase 13: Navigation, Button and Settings UX · Doctor Workspace upgrade · Voice Agent Phase 1: Knowledge and Safety Policy · Voice Agent Phase 2: Browser Voice Agent Demo · Voice Agent Phase 3: Microphone Transcription and Controlled AI Answering · Voice Agent Phase 3.1: Latency and Speech Quality
 
 A single-clinic appointment system for the Smriti Raj Dentistry reception desk: register and search patients, view doctor
 availability, create bookings, and manage them from a dashboard.
@@ -113,26 +113,54 @@ AI provider. The "after hours" status is part of the simulation, not a reading o
   caller-phrase buttons (booking, opening hours, speak to a person, tooth pain and medicine, Sunday).
   A phrase button starts a call if none is active. *Reset demo call* ends the current call and
   clears the screen.
-- **Natural voice (optional, recommended for presenting):** a locally generated neural voice
-  ([Piper](https://github.com/OHF-Voice/piper1-gpl)) that sounds far smoother than a browser's
-  built-in robot voice and works the same in every browser, Firefox included. One-time setup:
+- **Languages: English, हिंदी, Hinglish.** Choose the call language before starting; the choice is
+  remembered in this browser (local storage). During a call, *Change language* switches it and the
+  next assistant reply uses the new language. The language is shown in the call screen and
+  transcript and stored on the call log (`call_logs.language`, the latest one chosen). Only the
+  wording changes: booking, callback, waitlist, availability, Sunday-closure and safety rules are
+  identical in every language. The approved English, Hindi (Devanagari) and Hinglish (Roman Hindi)
+  wording lives in `app/knowledge_translations.py`; dates, times, numbers, references, doctor and
+  service names are inserted unchanged (Hindi only writes weekday and month names in Hindi). Caller
+  phrases are shown in the chosen language and send the same English phrase. The website assistant
+  stays in English. Hinglish is displayed in Roman Hindi and voiced by the Hindi local model: every
+  Hinglish message has a second, reviewed Devanagari version (`hinglish_speech`) stored next to it,
+  which is what is read aloud (no run-time transliteration). Each reply message carries `text` for
+  the transcript and `speech_text` for the voice. Seeded clinic, doctor and service names have
+  approved Devanagari pronunciations (`SPEECH_NAMES`); digits, times and references stay digits.
+  **All Hindi and Hinglish wording, including the speech text, is a demo draft and needs review by
+  the clinic before any production use.**
+- **Local voices (recommended for presenting):** replies are spoken by downloaded
+  [Piper](https://github.com/OHF-Voice/piper1-gpl) voice packs, generated on this computer and
+  played as ordinary audio, so they work the same in every browser, Firefox included:
+
+  | Language | Voice pack | Speaker |
+  | --- | --- | --- |
+  | English | `en_GB-cori-medium` | single speaker (British English) |
+  | हिंदी | `hi_IN-priyamvada-medium` | single speaker |
+  | Hinglish | `hi_IN-priyamvada-medium` | single speaker (reads the Devanagari speech text) |
+
+  One-time setup (packs already in `./voices` are kept, not downloaded again; `./voices` is ignored by Git):
 
   ```bash
   .venv/bin/pip install -r requirements-voice.txt
-  .venv/bin/python scripts/download_voice.py        # about 60 MB into ./voices
+  .venv/bin/python scripts/download_voice.py --all-demo-languages   # about 60-80 MB per pack
   ```
 
-  Restart the app afterwards. Audio is generated on this computer by the demo server
-  (`POST /api/call-demo/speech`); nothing is sent to a cloud service and nothing is stored. The
-  default voice is `en_GB-cori-medium` (British English; Piper has no Indian-English voice). To try
-  another, run `python scripts/download_voice.py en_US-lessac-medium` and start the app with
-  `CALL_DEMO_VOICE=en_US-lessac-medium`. Without the voice pack the page falls back as below.
-- **Browser voice (fallback):** replies are read aloud by the browser's own speech synthesis, after the first click
-  (never autoplay). *Test speaker* says "Hello. This is the Smriti Raj Dentistry appointment
+  Restart the app afterwards. Each pack loads on first use only. Change them with
+  `CALL_DEMO_VOICE_ENGLISH`, `CALL_DEMO_VOICE_ENGLISH_SPEAKER` (for example `en_US-l2arctic-medium` with speaker `SVBI` for an Indian accent) and
+  `CALL_DEMO_VOICE_HINDI`; `python scripts/voice_samples.py` writes labelled samples to
+  `voices/samples/`. The audio panel shows the active voice ("Local English voice", "Local Hindi
+  voice", "Hinglish conversation · Hindi local voice") with *Test English voice*, *Test Hindi voice*
+  and *Test Hinglish voice*. If a language's
+  pack is missing, the page says "This local voice pack is not installed. The conversation remains
+  available as text." and that language runs as text only; Hindi is never read by an English voice.
+- **Browser voice (fallback, English only):** only when the local English pack is
+  missing, replies are read aloud by the browser's own speech synthesis, after the first click
+  (never autoplay). *Test English voice* says "Hello. This is the Smriti Raj Dentistry appointment
   assistant." and the audio status shows "Voice ready", "Muted", "Browser voice unavailable" or
   "Audio requires a click to start". An English (India) voice is used when the browser has one.
   *Mute voice* turns speech off. The transcript works whether or not speech does.
-- **Text simulation mode:** without the voice pack, Firefox runs the call demo without speech,
+- **Text simulation mode:** without the English voice pack, Firefox runs the call demo without speech,
   because browser speech there (especially on Linux) is unreliable. The audio status reads "Text simulation mode —
   the conversation transcript remains fully functional." and the speaker test and mute control are
   shown but inactive, with the reason on hover. Other browsers switch to the same mode if they
@@ -150,6 +178,14 @@ AI provider. The "after hours" status is part of the simulation, not a reading o
   tagged "Demo call".
 - **Bookings and callbacks made on a call** are ordinary records: bookings keep source `AI_DEMO`,
   and the call log is what marks them as having come through the voice demo.
+- **Back to dashboard:** the call demo and the website assistant both have *Back to dashboard* in
+  the header. With no conversation in progress it goes straight to `/`. During a live call, or a
+  chat with messages that has not ended in a booking, callback or waitlist request, it asks "Leave
+  this conversation? Your active demo conversation will end." *Stay here* cancels; *Leave dashboard*
+  ends the call through the normal end flow (so its outcome is recorded) and opens the dashboard.
+  Opening the page without starting a call creates no call log. After a booking, callback or ended
+  call the transcript also offers *Back to dashboard* and *Start another demo call* (*Start another
+  conversation* on the assistant).
 
 ## Doctor consultation workspace (Phase 5)
 
@@ -435,6 +471,234 @@ payment or insurance step is scheduled.
   scheduled". Analytics counts recommendations by state and follow-ups booked, without procedure
   names or notes.
 
+## Voice Agent Phase 1: knowledge, runtime context and safety policy
+
+**Policy and knowledge groundwork.** There is no live phone number, LLM, telephony or live
+booking. Nothing in `app/voice_agent/` places or receives a call, talks to a model or writes to
+the database; the browser demo below is its only user. The website
+assistant, the call demo and the dashboard's demo doctors, services and fees are unchanged and
+are not merged with it.
+
+- **Approved knowledge** (`app/voice_agent/knowledge.py`): the clinic's address, landmark,
+  hours, phone numbers, email, doctors, specialist support, services, the 500 rupee initial
+  consultation fee, payment methods and CGHS empanelment, as structured fields. Treatment prices
+  are never quoted. CGHS, ECHS, CISF, DU and Air India questions become panel callbacks.
+- **Runtime context** (`context.py`): IST time, `clinic_open_now` (Monday to Saturday,
+  9:00 AM to 8:00 PM), `transfer_available` (9:30 AM to 7:30 PM, or a staff-availability
+  override) and an optional caller number that is never read out or put in a prompt.
+- **Policy** (`policy.py`): rule-based, in English, Hindi and Hinglish. Urgent symptoms get
+  "call 112" first; clinical questions get no diagnosis, medicines, remedies or reassurance;
+  ordinary tooth pain gets an appointment callback; anything not approved returns a structured
+  `UnknownInformation` result with a callback offer instead of a guess. A request for a person is
+  transferred only when transfer is available and otherwise goes straight to callback capture.
+- **Callbacks**: a 10-digit Indian mobile (6 to 9 first; a leading +91 or 0 is ignored),
+  created only after the caller confirms name and number, at most one per call plus one separate
+  urgent escalation. Callers are promised "as soon as possible during clinic hours" or "on the
+  next working day", never a number of minutes.
+- **Prompt and tools** (`prompt.py`, `schemas.py`): `render_system_prompt(context)` builds the
+  system prompt a later LLM would use, and `create_callback`, `transfer_to_reception` and
+  `end_call` are typed contracts only. Nothing calls them yet.
+
+Tests: `tests/test_voice_agent_policy.py`. **Every clinic detail and all Hindi/Hinglish wording
+still need owner review before production** (see `PENDING_OWNER_REVIEW` in
+`app/voice_agent/knowledge.py`).
+
+## Voice Agent Phase 2: browser voice agent demo (`/voice-agent-demo`)
+
+A presentation-ready owner demo, separate from `/assistant` and `/call-demo` (both unchanged).
+Open it from the dashboard's **AI call activity** card (**Voice agent demo**). It is a browser-based interactive prototype on sample
+data: it is not connected to a live clinic phone number, gives no medical advice, and records
+workflow outcomes but no audio. No Pipecat, telephony, LLM or booking is involved.
+
+```text
+Chromium microphone or typed text → Phase 1 policy (app/voice_agent) → existing callback and
+call-log services → local Piper voice reply → dashboard
+```
+
+- **Conversation:** `app/voice_agent/conversation.py` is a deterministic state machine over the
+  Phase 1 `CallSession`, policy and wording: greeting (by transfer availability), recording
+  notice, FAQ answers, unknown-information fallback, human request, simulated transfer failure
+  → callback details, appointment enquiry → appointment callback, panel/CGHS → panel callback,
+  clinical question → safe callback (never 112), urgent symptom → 112 instruction plus an
+  optional urgent callback, then name, number (or the calling number), reason, read-back and
+  confirmation, closing. English, Hindi and Hinglish; Hinglish is shown in Roman script and
+  spoken by the Hindi voice from the Hindi version of the same approved line.
+- **API:** `POST /api/voice-agent-demo/start` (optional demo-only simulation: `transfer`
+  `auto|available|unavailable`, `caller_id` `unknown|present`, `clinic` `auto|open|closed`),
+  `POST /api/voice-agent-demo/{session_id}/message` and `POST /api/voice-agent-demo/{session_id}/end`.
+  Each call is an independent in-memory session with a fresh IST context. Loading the page or
+  starting a call writes nothing; a confirmed callback is created through
+  `services/callbacks.create_callback` (source `AI_DEMO`), and the call is logged once, when it
+  ends, as channel `VOICE_AGENT`. Ending twice changes nothing; replies after the end are refused.
+- **Transfers are always simulated:** there is no reception line, so an attempted transfer goes
+  unanswered and the agent moves straight to callback details.
+- **Microphone:** replaced in Phase 3 by push-to-talk with server-side transcription (below).
+- **Audio:** the existing local Piper voices (`/api/call-demo/speech`) and the existing
+  `call-audio.js` cancellation. End call silences audio immediately, aborts any pending speech
+  request, drops late replies and disables input.
+- **Tests:** `tests/test_voice_agent_demo.py` (API and conversation) and
+  `tests/test_voice_agent_browser.py`, which drives headless Chromium through
+  `tests/js/voice_agent_browser.js` (typed flow, microphone transcription, End call silence,
+  late replies, 390px layout, saved language). The browser checks are skipped
+  without Node.js and Chromium; the End-call audio check also needs the English voice pack.
+
+## Voice Agent Phase 3: microphone transcription and controlled AI answering
+
+Still a browser demo on sample data: no telephony, Pipecat, live phone routing or booking.
+
+```text
+Chromium microphone (MediaRecorder, one phrase per tap) → POST /api/voice-agent-demo/transcribe
+→ local faster-whisper on this server (audio kept in memory, then discarded) → editable "You said: …"
+→ Send → safety rules → optional language model picks approved answers → approved wording → Piper voice
+```
+
+**Microphone transcription.** Browser speech recognition is no longer used. The page records one
+phrase per turn, the server transcribes it with
+[faster-whisper](https://github.com/SYSTRAN/faster-whisper) and returns text. (Since Phase 3.1 the
+turn ends on silence and clear transcripts are sent at once; only uncertain ones are held for review.)
+Typed input always works.
+
+```bash
+.venv/bin/pip install -r requirements-voice.txt          # faster-whisper (and the optional Anthropic SDK)
+.venv/bin/python scripts/download_stt_model.py           # large-v3-turbo, about 1.6 GB, once; never at startup
+# optional GPU speed-up (NVIDIA): .venv/bin/pip install nvidia-cublas-cu12 "nvidia-cudnn-cu12>=9,<10"
+```
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `VOICE_AGENT_STT_MODEL` | `large-v3-turbo` | faster-whisper model name (`small` is faster but weaker in Hindi) |
+| `VOICE_AGENT_STT_DIR` | `./models/stt` | where `download_stt_model.py` puts models (ignored by Git) |
+| `VOICE_AGENT_STT_DEVICE` | `auto` | `auto` tries the GPU, then the CPU; or `cpu` / `cuda` |
+| `VOICE_AGENT_STT_COMPUTE_TYPE` | blank | blank: `int8` on CPU, `float16` on GPU |
+| `VOICE_AGENT_STT_MAX_SECONDS` / `_MAX_BYTES` | `30` / 2 MB | longest recording accepted |
+
+- **Privacy:** the recording is decoded and transcribed in memory and dropped when the request
+  ends. It is never written to a file, the database or a log, and it is not sent to Google or
+  any other speech service. Only the text comes back (`"stored": false`).
+- **Languages:** English and Hindi use Whisper's own modes. **Hinglish has no separate model:** it
+  uses the same multilingual model in English mode with a Roman-Hinglish spelling hint, so mixed
+  speech comes back in Roman script. The selected language stays Hinglish whatever script the
+  transcript uses, and replies are in Roman Hinglish.
+- **Low confidence:** uncertain transcripts show "I may not have caught that correctly. Please try
+  again or type your message."
+- **Matching only:** Devanagari spellings of English words (संडे, क्लिनिक, अपॉइंटमेंट…) are read in
+  Roman script for intent matching only; what the caller sees, and what staff receive, is the
+  original transcript.
+- **No model installed:** the page says so and offers typed input only.
+- **Adapter:** `app/services/stt.py` defines the `SpeechToText` shape (`status()`, `transcribe()`);
+  a production or Pipecat provider can replace `LocalWhisper` in `app.state.transcriber` without
+  changing the page or the conversation.
+
+**Controlled AI answering.** An optional language model *understands* the caller; it never writes
+what the agent says.
+
+```bash
+# local (no key): Ollama with qwen3:8b already pulled
+VOICE_AGENT_LLM_PROVIDER=ollama VOICE_AGENT_LLM_MODEL=qwen3:8b .venv/bin/uvicorn app.main:app --port 8001
+# or Claude: VOICE_AGENT_LLM_PROVIDER=anthropic with ANTHROPIC_API_KEY set (model claude-opus-5-5 by default)
+```
+
+- The model receives the rendered Phase 1 system prompt (approved knowledge, runtime context,
+  safety rules, tool contracts), the selected language, the call state, recent turns and the
+  original transcript. It must return JSON: an intent from a fixed list, up to two approved answer
+  ids, and any preferred doctor or time. Unknown ids or intents are rejected.
+- The spoken reply is always the approved wording for those ids, so the model cannot invent
+  facts, quote treatment prices, promise schedules, claim bookings or give advice.
+- **Deterministic first:** urgent symptoms and 112, clinical questions, tooth pain, treatment
+  suitability and explicit requests (a person, panel, reschedule, cancel, booking status and
+  similar) never reach the model. Phone validation, callback confirmation, the one-callback rule,
+  transfers and ending the call stay in code.
+- Any error, timeout (`VOICE_AGENT_LLM_TIMEOUT_SECONDS`, default 12) or invalid reply falls back to
+  the rule-based policy for that turn. `VOICE_AGENT_LLM_PROVIDER=none` (the default) uses rules only.
+- **Demo details** on the page show the AI response source (Approved knowledge, Callback required,
+  Safety fallback or Emergency escalation) and what understood the caller. The prompt, raw
+  knowledge, keys and tool payloads are never shown.
+
+**Knowledge base.** `app/voice_agent/knowledge_base.py` holds every answer in the owner-review
+categories (clinic profile, location and directions, hours and closures, contact details, doctors,
+services, visit logistics, appointment policies, fees and payments, panels and insurance, safe
+general answers, callback-required topics, clinical refusal topics, urgent symptom topics,
+language translations). Each entry is marked `approved_brief`, `system_fact`,
+`owner_approval_required` (drafted for the demo) or `not_provided` (the agent says it doesn't know
+and offers a callback: parking, accessibility, walk-ins, holidays, WhatsApp, cancellation policy).
+Appointment enquiries also collect new or existing patient, preferred doctor and preferred time.
+Reschedule, cancellation, booking status, missed call, website enquiry, complaint and records
+requests become callbacks labelled with that intent, with the lead details in the staff notes.
+
+Tests: `tests/test_voice_agent_phase3.py`, plus the browser checks (fake microphone and
+transcriber; with the model installed, real Chromium-to-Whisper transcription in all three languages).
+
+## Voice Agent Phase 3.1: latency and speech-recognition quality
+
+No new features; the same safety rules, approved answers, callback rules, LLM limits and routes.
+
+- **Ends on silence.** Tap to speak; the browser watches the microphone level (no cloud service) and ends
+  the turn about 0.8 s after you stop talking (15 s at most). "Stop listening" ends it early. Silent or
+  near-silent recordings are never uploaded. Stages: Listening… → I heard you. Understanding… →
+  Thinking… → Preparing voice… → Speaking.
+- **Clear speech goes straight through; unclear speech never acts.** A confident transcript is sent at
+  once. A low-confidence one is shown for review ("Send this", "Try again", "Type instead") with "I may
+  not have caught that clearly. Please say that again, or type your message." The server also refuses to
+  act on unreviewed low-confidence speech: no language model, no callback, no transfer, no emergency path.
+- **Speech-to-text.** `large-v3-turbo` stays loaded (warmed at start-up in the background, never
+  downloaded), on the GPU with `float16` when CUDA is available (`int8` on CPU), one pass at temperature 0
+  without timestamps, silence trimmed by VAD, and a clinic vocabulary hint (Smriti Raj Dentistry, Dwarka,
+  the doctors, appointment, callback, consultation, root canal, implant, braces, aligners, CGHS, reception,
+  periodontist, orthodontist; Devanagari forms for Hindi). The transcript is never rewritten.
+- **Answer selection.** Clear rule matches answer at once; the language model is asked only when the rules
+  cannot place the words, with a short fixed prompt (cached by the model), the current words only, a 1.5 s
+  limit (`VOICE_AGENT_LLM_TIMEOUT_SECONDS`) and the rules as an immediate fallback. Ollama is warmed at
+  start-up and kept loaded.
+- **Speech.** Piper voices stay loaded; replies are spoken sentence by sentence (the next sentence is
+  generated while the first plays) by `POST /api/voice-agent-demo/speech`, in a worker thread that stops
+  when the page cancels. Approved fixed phrases (greeting, "One moment, please.", the retry line, closing
+  lines) are pre-generated and cached per language and voice; nothing containing a caller's name, number
+  or words is cached. "One moment, please." plays only if a reply takes longer than 1.2 s.
+- **Only the latest turn plays.** Every turn has its own id; a newer turn, mute or End call cancels the
+  recording, transcription, reply request and audio, and nothing late can appear or speak.
+- **Turn timing** (developer panel on the page): speech ended → transcript, transcript → answer, answer →
+  audio ready, speech ended → audio playing, plus which path answered (rule, llm or fallback). Kept in the
+  page for the current turn only; never stored.
+
+Tests: `tests/test_voice_agent_latency.py`, `tests/js/voice_agent_audio_harness.js`, and the browser checks.
+
+## Voice agent demo: reference voice (consented local experiment)
+
+An optional, demo-only voice on `/voice-agent-demo` that resembles an authorised speaker. The standard
+Piper voices stay the default and are unchanged. Speech-to-text, the language model, knowledge,
+callbacks, safety paths, logging and languages are untouched. **Not production-ready.**
+
+- **Consent:** use only a recording whose speaker has explicitly agreed to their voice being cloned for
+  this demo. For this demo the agreed speaker is the receptionist in
+  `~/Downloads/WhatsApp Audio 2026-10-19 at 1.42.17 AM.mp4`. The caller's lines in that recording are
+  excluded. The recording is not copied into the project or committed (`*.mp4` is ignored by Git).
+- **Reference clips:** `scripts/prepare_reference_voice.py` cuts the speaker's own segments into mono
+  24 kHz WAV clips in `voices/reference/` (ignored by Git, never served by any route). The clips used:
+  ```bash
+  .venv/bin/python scripts/prepare_reference_voice.py --source "<authorised recording>" \
+    --clip hi_1=10.46-14.42,18.98-23.74,28.55-30.87 \
+    --clip hi_2=48.58-53.08,61.31-63.93,97.20-99.92,129.25-132.69 \
+    --clip mix_1=1.20-5.50,40.22-42.48,99.92-105.66
+  ```
+- **Model:** Chatterbox Multilingual (Resemble AI; the code and weights are MIT-licensed per the model card;
+  every output carries Resemble's PerTh watermark). It runs in its own environment `.venv-refvoice`
+  (Python 3.11; ignored by Git) as a local worker on 127.0.0.1:8765, so the main app never loads PyTorch.
+  The weights (about 3 GB) download once to the Hugging Face cache, outside the project. Setup and run:
+  see `scripts/reference_voice_worker.py`. English uses the `mix_1` clip and Hindi uses `hi_1`.
+  Hinglish is spoken from the Hindi version of each line, as with the standard voice.
+- **Selector:** "Standard local voice" (default) or "Reference voice (authorised demo)". It is shown only
+  when the clips are present and the worker is ready.
+- **Fallback:** if the reference voice cannot speak a sentence (no clips, worker not running, language
+  not supported, slower than `VOICE_AGENT_REFERENCE_TIMEOUT_SECONDS` (default 6), failed or cancelled),
+  the standard voice speaks it. The page then shows "Reference voice is unavailable for this reply.
+  Using the standard local voice." and labels it "Speaking (standard voice)". Sentences containing the
+  emergency number 112 always use the standard voice, because the cloning model misread "112" in
+  testing. Numbers are spelled out for the reference voice; that text is not stored.
+- **Privacy:** nothing leaves this machine. Reference speech is generated on request, never cached, and
+  never stored. Neither the reference clips nor the generated audio go into the database.
+- **Evaluation (internal, not in the UI):** `scripts/evaluate_reference_voice.py generate` (main env), then
+  `compare` (reference env). Outputs go to `voices/reference/eval/` for listening; delete them afterwards.
+
 ## Changing the demo values
 
 - **Before first run:** edit the seed values in `app/config.py` (clinic name, address, phone,
@@ -504,13 +768,19 @@ app/
     analytics.py       aggregated owner analytics (counts only)
     followups.py       procedure follow-up scheduling for released recommendations
     calls.py           call log for the voice-call simulation
-    tts.py             optional local voice for the call demo (Piper)
+    tts.py             local voices for the call demo (Piper, one pack per language)
+    call_language.py   words call-demo replies in English, Hindi or Hinglish
+    voice_agent_demo.py  sessions for the browser voice agent demo (callbacks + call log)
+    stt.py             speech-to-text adapter (local faster-whisper, in memory)
+    reference_voice.py optional consented reference voice (local worker, Piper fallback)
     errors.py          staff-friendly error types
+  voice_agent/         voice receptionist: knowledge base, context, policy, wording, prompt, conversation, LLM router
   routes/
     api.py             JSON booking API under /api (docs at /docs)
     pages.py           server-rendered reception screens
     assistant.py       public /assistant page and its message endpoint
     calls.py           /call-demo page and its endpoints
+    voice_agent.py     /voice-agent-demo page and its session API
     doctor.py          /doctor workspace and its form actions
     checkin.py         /check-in screen and QR card
     waitlist.py        /waitlist screen and staff API
@@ -565,8 +835,8 @@ functions or the JSON API, passing `source: "AI_DEMO"`.
 | POST | `/api/follow-ups/consultation/{id}/schedule` | Book a consultation follow-up |
 | GET | `/api/analytics?range=today\|week\|all` | Aggregated sample-data counts; no patient or doctor free text |
 | POST | `/api/notifications/{id}/{send\|deliver\|fail\|retry}` | Simulated staff action (changes status only) |
-| GET | `/api/call-demo/voice` | Whether the optional local voice pack is installed |
-| POST | `/api/call-demo/speech` | WAV audio for one reply, generated locally (rate-limited) |
+| GET | `/api/call-demo/voice` | Which local voice pack each language uses and whether it is installed |
+| POST | `/api/call-demo/speech` | WAV audio for one reply in `language` (`en`, `hi`, `hinglish`), generated locally (rate-limited) |
 
 ### Moving to PostgreSQL later
 
@@ -632,6 +902,7 @@ the clinic owner before this is shown as anything other than a demo:
 - Doctor names, specialities, working days, hours and consultation length
 - Service consultation fees (demo values, not real prices) and the currency symbol
 - Use of the clinic's name and brand colours in this interface
+- The voice-agent knowledge and wording in `app/voice_agent/` (see Voice Agent Phase 1)
 
 ## Assumptions and limits
 

@@ -253,3 +253,80 @@ def test_doctors_cannot_edit_identity_delete_records_or_touch_bookings_they_do_n
         assert post(client, f"appointments/{visit['id']}/status", status=status).status_code == 403
     paths = client.get("/openapi.json").json()["paths"]
     assert not [p for p in paths if "care" in p or "note" in p.lower() or "flag" in p.lower()]
+
+
+# ---- "Needs follow-up" is advisory; "Send follow-up to reception" creates the real request ---------
+NO_REQUEST = "No follow-up request has been sent to reception yet."
+
+
+def patient_page(client, patient_id):
+    text = client.get(f"/patients/{patient_id}").text
+    return text.split('aria-label="Patient record sections"')[1].split('id="timeline"')[0]  # the patient card only
+
+
+def awaiting_section(client):
+    return client.get("/follow-ups").text.split('id="awaiting"')[1].split("</section>")[0]
+
+
+def test_needs_follow_up_flag_alone_creates_nothing_for_reception(client, visit):
+    assert post(client, f"appointments/{visit['id']}/care/flags", flags=["NEEDS_FOLLOW_UP"]).status_code == 303
+    assert client.get("/api/follow-ups/consultation").json()["awaiting"] == []
+    assert "consultation-followup-" not in awaiting_section(client)
+    with client.app.state.session_factory() as db:
+        assert db.query(ConsultationFollowup).count() == 0
+
+    card = patient_page(client, visit["patient_id"])
+    assert "Doctor flag: Needs follow-up" in card
+    assert "The doctor has marked that this patient may need a follow-up. Create or send a follow-up request from Doctor Workspace." in card
+    assert NO_REQUEST in card
+    assert "Check Follow-ups" not in card and "View follow-up" not in card and 'href="/follow-ups' not in card
+
+
+def test_workspace_keeps_the_flag_and_the_send_action_separate(client, visit):
+    text = overview(page(client, visit))
+    flags_card = text.split('id="ov-flags"')[1].split("</section>")[0]
+    followup_card = text.split('id="ov-followup"')[1].split("</section>")[0]
+    assert 'value="NEEDS_FOLLOW_UP"' in flags_card and "Send follow-up to reception" in flags_card  # the hint points to it
+    assert "/care/follow-up" not in flags_card
+    assert '/care/follow-up" class="form send-to-reception"' in followup_card
+    assert '<button class="btn btn-primary" type="submit">Send follow-up to reception</button>' in followup_card
+
+
+def test_send_follow_up_to_reception_appears_immediately_and_on_the_patient_page(client, visit):
+    post(client, f"appointments/{visit['id']}/care/flags", flags=["NEEDS_FOLLOW_UP"])
+    sent = post(client, f"appointments/{visit['id']}/care/follow-up", timeframe="WEEK_1")
+    assert sent.status_code == 303 and "notice=care_followup" in sent.headers["location"]
+    assert "Follow-up sent to reception. It is ready for scheduling." in client.get(sent.headers["location"]).text
+
+    [item] = client.get("/api/follow-ups/consultation").json()["awaiting"]
+    assert item["patient"]["id"] == visit["patient_id"]
+    assert f'id="consultation-followup-{item["id"]}"' in awaiting_section(client)
+
+    card = patient_page(client, visit["patient_id"])
+    request = card.split(f'data-followup-request="{item["id"]}"')[1].split("</p>")[0]
+    assert "Consultation follow-up" in request and "Ready for reception" in request and "Dr. Anika Rao" in request
+    assert f'href="/follow-ups?kind=consultation&amp;schedule={item["id"]}">View follow-up</a>' in request
+    assert NO_REQUEST not in card and "Check Follow-ups" not in card
+
+    # Booked by reception: the patient page follows the state.
+    slot = next(s for s in client.get("/api/doctors/1/slots", params={"date": "2026-10-16"}).json() if s["available"])
+    client.post(f"/api/follow-ups/consultation/{item['id']}/schedule", json={"slot_id": slot["id"]})
+    request = patient_page(client, visit["patient_id"]).split(f'data-followup-request="{item["id"]}"')[1].split("</p>")[0]
+    assert "Scheduled" in request and "booked Fri, 16 Oct" in request and 'href="/follow-ups">View follow-up</a>' in request
+    assert "SECRET" not in client.get(f"/patients/{visit['patient_id']}").text
+
+
+def test_patient_page_shows_closed_requests_and_hides_drafts(client, visit):
+    post(client, f"appointments/{visit['id']}/care/flags", flags=["NEEDS_FOLLOW_UP"])
+    post(client, f"appointments/{visit['id']}/care/follow-up")
+    with client.app.state.session_factory() as db:
+        request_id = db.query(ConsultationFollowup).one().id
+    post(client, f"follow-ups/{request_id}/close", appointment_id=visit["id"], reason="NOT_NEEDED")
+    request = patient_page(client, visit["patient_id"]).split(f'data-followup-request="{request_id}"')[1].split("</p>")[0]
+    assert "Closed" in request and "View follow-up" in request
+
+    with client.app.state.session_factory() as db:
+        db.get(ConsultationFollowup, request_id).status = "DRAFT"  # a draft never reached reception
+        db.commit()
+    card = patient_page(client, visit["patient_id"])
+    assert "data-followup-request" not in card and NO_REQUEST in card

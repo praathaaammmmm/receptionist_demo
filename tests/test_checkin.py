@@ -227,7 +227,7 @@ def test_check_in_updates_dashboard_doctor_workspace_and_timeline(client, confir
         return client.get(f"/doctor?doctor_id={doctor_id}").text.split("today’s list")[1].split("</table>")[0]
 
     assert "CONFIRMED" in dashboard_row() and "Generate check-in QR" in dashboard_row()
-    assert "Mark arrived" in doctor_list()
+    assert "Mark patient arrived" in doctor_list()
 
     token = token_for(client, appointment_id)
     assert "View check-in QR" in dashboard_row() and "Generate check-in QR" not in dashboard_row()
@@ -236,7 +236,7 @@ def test_check_in_updates_dashboard_doctor_workspace_and_timeline(client, confir
     row = dashboard_row()
     assert "ARRIVED" in row and "CONFIRMED" not in row and "check-in QR" not in row  # no QR action once arrived
     listing = doctor_list()
-    assert "ARRIVED" in listing and "Mark completed" in listing and "Mark arrived" not in listing  # doctor sees it at once
+    assert "ARRIVED" in listing and "Mark completed" in listing and "Mark patient arrived" not in listing  # doctor sees it at once
     week = client.get(f"/api/doctors/{doctor_id}/schedule").json()["days"][0]["entries"]
     assert next(e for e in week if e.get("appointment_id") == appointment_id)["status"] == "ARRIVED"
 

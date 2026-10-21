@@ -22,8 +22,8 @@ from .errors import NotFoundError, ValidationError
 _RANK = {None: 0, CALL_ENDED: 0, CALL_FAQ_ANSWERED: 1, CALL_CALLBACK_CREATED: 2, CALL_BOOKING_CREATED: 3}
 
 
-def start_call(db: Session, channel: str = CALL_CHANNEL_VOICE_DEMO) -> CallLog:
-    call = CallLog(channel=channel, started_at=utils.now())
+def start_call(db: Session, channel: str = CALL_CHANNEL_VOICE_DEMO, language: str | None = None) -> CallLog:
+    call = CallLog(channel=channel, started_at=utils.now(), language=language)
     db.add(call)
     db.commit()
     return call
@@ -69,13 +69,46 @@ def record_turn(db: Session, call: CallLog, reply: dict) -> CallLog:
     return call
 
 
-def end_call(db: Session, call_id: int) -> CallLog:
+def end_call(db: Session, call_id: int, language: str | None = None) -> CallLog:
     """Close the call. With no booking, callback or answer the outcome is ENDED. Safe to repeat."""
     call = get_call(db, call_id)
     if call.completed_at is None:
+        if language:  # the caller switched language after the last turn
+            call.language = language
         call.completed_at = utils.now()
         call.outcome = call.outcome or CALL_ENDED
         db.commit()
+    return call
+
+
+def log_finished_call(
+    db: Session,
+    *,
+    channel: str,
+    started_at,
+    language: str | None = None,
+    caller_name: str | None = None,
+    caller_mobile: str | None = None,
+    callback_task_id: int | None = None,
+    answered: bool = False,
+) -> CallLog:
+    """Log a call that was held in memory until it finished (the voice agent demo), with the same outcomes."""
+    call = CallLog(
+        channel=channel,
+        started_at=started_at,
+        completed_at=utils.now(),
+        language=language,
+        caller_name=(caller_name or None) and caller_name[:120],
+        caller_mobile=(caller_mobile or None) and caller_mobile[:20],
+        callback_task_id=callback_task_id,
+    )
+    if callback_task_id:
+        _raise_outcome(call, CALL_CALLBACK_CREATED)
+    if answered:
+        _raise_outcome(call, CALL_FAQ_ANSWERED)
+    call.outcome = call.outcome or CALL_ENDED
+    db.add(call)
+    db.commit()
     return call
 
 

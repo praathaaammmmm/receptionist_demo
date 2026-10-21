@@ -3,7 +3,7 @@
 {% block title %}Doctor workspace{% endblock %}
 {% macro status_form(a, status, label, style="") %}
 {% set confirms = {
-  'ARRIVED': 'Mark ' ~ a.patient.name ~ ' as arrived? Reception and the calendar will show them as in the clinic.',
+  'ARRIVED': 'Mark this patient as arrived? Use this only when the patient is physically present.',
   'COMPLETED': ('Mark the visit for ' ~ a.patient.name ~ ' as completed? This cannot be undone.') if a.outcome else ('No consultation outcome has been saved for ' ~ a.patient.name ~ '. Complete the visit without an outcome? This cannot be undone.'),
   'NO_SHOW': 'Mark ' ~ a.patient.name ~ ' as a no-show? This cannot be undone.',
 } %}
@@ -11,6 +11,18 @@
   <input type="hidden" name="status" value="{{ status }}">
   <button class="btn btn-sm {{ style }}" type="submit">{{ label }}</button>
 </form>
+{% endmacro %}
+{# The assigned doctor confirms their own pending booking: a scheduling step, nothing clinical. #}
+{% macro confirm_form(a, style="btn-primary") %}
+<form method="post" action="/doctor/{{ doctor.id }}/appointments/{{ a.id }}/confirm" data-confirm="Confirm this appointment? Reception and the patient will see it as confirmed.">
+  <button class="btn btn-sm {{ style }}" type="submit">Confirm appointment</button>
+</form>
+{% endmacro %}
+{% macro checkin_qr_action(a) %}
+{% if can_generate_qr(a) %}
+  {% if a.checkin_token %}<a class="btn btn-sm" href="/appointments/{{ a.id }}/checkin-qr">Open QR check-in</a>
+  {% else %}<form method="post" action="/appointments/{{ a.id }}/checkin-qr"><button class="btn btn-sm" type="submit">Open QR check-in</button></form>{% endif %}
+{% endif %}
 {% endmacro %}
 {% macro start_form(a, style="btn-success") %}
 <form method="post" action="/doctor/{{ doctor.id }}/appointments/{{ a.id }}/start">
@@ -23,7 +35,8 @@
    In consultation → Complete. The rest (no-show, completing without starting, calendar) sits behind "More". #}
 {% macro actions(a) %}
   {% set st = stage_of(a) %}
-  {% if st == 'UPCOMING' %}{{ status_form(a, 'ARRIVED', 'Mark arrived', 'btn-success') }}
+  {% if a.status == 'PENDING' %}{{ confirm_form(a) }}
+  {% elif st == 'UPCOMING' %}{{ status_form(a, 'ARRIVED', 'Mark patient arrived', 'btn-success') }}
   {% elif st == 'WAITING' %}{{ start_form(a) }}
   {% elif st == 'IN_CONSULTATION' %}{{ status_form(a, 'COMPLETED', 'Mark completed', 'btn-success') }}{% endif %}
   {% call more_menu("More actions for " ~ a.patient.name) %}
@@ -226,7 +239,7 @@
 <section class="card day-summary" aria-labelledby="day-summary-title">
   <div class="card-head">
     <h2 id="day-summary-title">{{ doctor.name }} · {{ today.strftime("%a %d %b") }}</h2>
-    <span class="muted">{% if awaiting %}{{ awaiting }} more {{ 'booking' if awaiting == 1 else 'bookings' }} awaiting reception confirmation{% else %}Confirmed patients only; reception confirms bookings{% endif %}</span>
+    <span class="muted">{% if awaiting %}{{ awaiting }} more {{ 'booking' if awaiting == 1 else 'bookings' }} awaiting confirmation{% else %}Confirmed patients only{% endif %}</span>
   </div>
   <ul class="stage-counts" aria-label="Today by stage">
     {% for key, (label, st) in filters.items() if st %}
@@ -250,7 +263,7 @@
       </dl>
       {{ flag_list(nv.flags) }}
       <div class="next-actions">
-        {% if nv.stage == 'UPCOMING' %}{{ status_form(a, 'ARRIVED', 'Mark arrived', 'btn-primary') }}
+        {% if nv.stage == 'UPCOMING' %}{{ status_form(a, 'ARRIVED', 'Mark patient arrived', 'btn-primary') }}
         {% elif nv.stage == 'WAITING' %}{{ start_form(a, 'btn-primary') }}
         {% else %}<a class="btn btn-sm btn-primary" href="/doctor?doctor_id={{ doctor.id }}&appointment_id={{ a.id }}#consult-outcome">Write outcome</a>{{ status_form(a, 'COMPLETED', 'Complete consultation', '') }}{% endif %}
         <a class="btn btn-sm" href="{{ open_href(a) }}">Open consultation</a>
@@ -273,8 +286,21 @@
 <section class="card" id="queue">
   <div class="card-head">
     <h2>{{ doctor.name }} · today’s list</h2>
-    <span class="muted">Confirmed and arrived patients{% if awaiting %} · {{ awaiting }} more awaiting reception confirmation{% endif %}</span>
+    <span class="muted">Confirmed and arrived patients{% if awaiting %} · {{ awaiting }} more awaiting confirmation{% endif %}</span>
   </div>
+  {% if pending_today %}
+  <div class="pending-list" id="awaiting-confirmation">
+    <h3>Awaiting confirmation today</h3>
+    <ul>
+      {% for p in pending_today %}
+      <li id="pending-{{ p.id }}">
+        <span><strong>{{ p.start_time|fmt_time }}</strong> · <a href="{{ open_href(p) }}">{{ p.patient.name }}</a> · {{ p.service.name }} <span class="pill pill-pending">PENDING</span></span>
+        {{ confirm_form(p) }}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
   <nav class="filter-tabs" aria-label="Filter today’s patients">
     {% for key, (label, st) in filters.items() %}
     <a class="filter-tab{{ ' is-active' if board.filter == key }}" {% if board.filter == key %}aria-current="page"{% endif %} href="/doctor?doctor_id={{ doctor.id }}{{ '&show=' ~ key if key != 'all' }}#queue">{{ label }} <span class="count">{{ board.visits|length if not st else board.counts[st] }}</span></a>
@@ -364,6 +390,30 @@
     {% endfor %}
     {% if a.status == 'NO_SHOW' %}<li class="is-current is-final" aria-current="step">No-show</li>{% endif %}
   </ol>
+  {% if a.status == 'PENDING' %}
+  <div class="booking-state is-pending" id="booking-state">
+    <p><strong>Awaiting confirmation.</strong> Reception has not confirmed this booking yet. You can confirm it yourself.</p>
+    <div class="booking-state-actions">{{ confirm_form(a) }}</div>
+  </div>
+  {% elif a.status == 'CONFIRMED' %}
+  <div class="booking-state is-confirmed" id="booking-state">
+    <p><strong>Waiting for patient arrival/check-in.</strong>{% if a.start_time.date() != today %} Booked for {{ a.start_time|fmt_date }}.{% endif %}</p>
+    <div class="booking-state-actions">
+      {{ status_form(a, 'ARRIVED', 'Mark patient arrived', 'btn-primary') }}
+      {{ checkin_qr_action(a) }}
+    </div>
+    <p class="demo-arrival-note muted small">For this demo, the doctor can manually mark a confirmed patient as arrived. In production, reception check-in or QR scanning can be the standard process.</p>
+  </div>
+  {% elif a.status == 'ARRIVED' %}
+  <div class="booking-state is-arrived" id="booking-state">
+    <p><strong>Patient arrived</strong> · {{ arrival_mark(a) }}</p>
+    <div class="booking-state-actions">
+      {% if not a.consultation_start %}{{ start_form(a, 'btn-primary') }}{% endif %}
+      <a class="btn btn-sm" href="#consult-outcome">Save consultation outcome</a>
+      <a class="btn btn-sm" href="#ov-followup">Send follow-up to reception</a>
+    </div>
+  </div>
+  {% endif %}
   <nav class="section-tabs" aria-label="Consultation sections">
     <a href="#consult-outcome">Consultation</a>
     <a href="#consult-treatment">Treatment / recommendation</a>
@@ -528,6 +578,7 @@
           <button class="btn btn-sm" type="submit">Save flags</button>
         </form>
         <p class="muted small">Untick to clear. Each change is logged on the patient timeline by name only.</p>
+        <p class="hint small">Flags are advisory. Ticking “Needs follow-up” does not send anything to reception’s Follow-ups list: use <strong>Send follow-up to reception</strong> below.</p>
       </section>
 
       <section class="ov-card" aria-labelledby="ov-followup">
@@ -549,13 +600,13 @@
           </li>
           {% endfor %}
         </ul>
-        {% else %}<p class="muted small">No follow-up requested for this patient yet.</p>{% endif %}
+        {% else %}<p class="muted small">No follow-up has been sent to reception for this patient yet.</p>{% endif %}
         {% if ov.can_request_followup %}
-        <form method="post" action="/doctor/{{ doctor.id }}/appointments/{{ a.id }}/care/follow-up" class="form">
+        <form method="post" action="/doctor/{{ doctor.id }}/appointments/{{ a.id }}/care/follow-up" class="form send-to-reception">
           {{ followup_fields() }}
-          <button class="btn btn-sm btn-primary" type="submit">Request follow-up</button>
+          <button class="btn btn-primary" type="submit">Send follow-up to reception</button>
         </form>
-        <p class="muted small">Sends a request to reception’s Follow-ups list. Nothing is booked until reception schedules it; slots keep your standard length.</p>
+        <p class="muted small">Creates a follow-up on reception’s Follow-ups list straight away. Nothing is booked until reception schedules it; slots keep your standard length.</p>
         {% elif a.status not in ('ARRIVED', 'COMPLETED') %}
         <p class="muted small">A follow-up can be requested once the patient has arrived.</p>
         {% endif %}

@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from .. import config, knowledge, utils
+from .. import knowledge_translations as wording
 from ..models import Doctor, Service, Slot
 from . import appointments, availability, callbacks, clinic, patients, waitlist
 from .errors import ClinicError, DuplicatePatientError, ValidationError
@@ -27,7 +28,8 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 # --- Intent rules (checked in this order) ------------------------------------
 _HUMAN = re.compile(
     r"\b(speak|talk|chat)\b.*\b(person|human|someone|somebody|staff|receptionist|doctor|dentist|team)\b"
-    r"|\bcall ?back\b|\bcall me\b|\bring me\b|\bhuman\b|\breal person\b|\breceptionist\b",
+    r"|\bcall ?back\b|\bcall me\b|\bring me\b|\bhuman\b|\breal person\b|\breceptionist\b"
+    r"|\b(person|insaan|kisi) se baat\b|व्यक्ति से बात|इंसान से बात|किसी से बात",
     re.I,
 )
 _SCHEME = re.compile(r"\b(cghs|echs)\b", re.I)
@@ -40,14 +42,18 @@ _CLINICAL = re.compile(
     r"|recover\w*|heal\w*|cure\w*|emergenc\w*|urgent\w*|x-?rays?|suitable|candidate|success\w*"
     r"|guarantee\w*|permanent\w*|results?)\b"
     r"|\bshould i\b|\bdo i need\b|\bam i\b|\bis it normal\b|\bwhat causes\b|\bwhich treatment\b"
-    r"|\bbest treatment\b|\bhow long\b|\bhow many\b|\bwill it\b|\bdoes it\b|\bcan i (eat|drink|smoke|take)\b",
+    r"|\bbest treatment\b|\bhow long\b|\bhow many\b|\bwill it\b|\bdoes it\b|\bcan i (eat|drink|smoke|take)\b"
+    # The same safety rule for Hindi and Hinglish: pain, medicine, swelling, bleeding, fever.
+    r"|\b(dard|dawa|dawai|dawaai|davai|sujan|soojan|khoon|bukhar)\b|दर्द|दवा|सूजन|खून|बुखार",
     re.I,
 )
 _BOOK = re.compile(
-    r"\b(book\w*|appointments?|schedul\w*|reserv\w*|slots?|availab\w*|consultations?|visit)\b", re.I
+    r"\b(book\w*|appointments?|schedul\w*|reserv\w*|slots?|availab\w*|consultations?|visit)\b"
+    r"|बुक|अपॉइंटमेंट|कंसल्टेशन",
+    re.I,
 )
-_GREETING = re.compile(r"^\W*(hi|hello|hey|namaste|good (morning|afternoon|evening))\b", re.I)
-_THANKS = re.compile(r"\b(thanks?|thank you|that'?s all|bye|goodbye)\b", re.I)
+_GREETING = re.compile(r"^\W*(hi|hello|hey|namaste|good (morning|afternoon|evening))\b|^\W*(नमस्ते|नमस्कार)", re.I)
+_THANKS = re.compile(r"\b(thanks?|thank you|that'?s all|bye|goodbye|dhanyavaad|shukriya)\b|धन्यवाद|शुक्रिया", re.I)
 
 
 # --- Reply helpers ------------------------------------------------------------
@@ -59,6 +65,14 @@ FREE_INPUT = {"type": "text", "label": "Your message", "placeholder": "Ask about
 _PERSON = _opt("Speak to a person", "intent", "human")
 _BOOKING = _opt("Book a consultation", "intent", "book")
 _RESTART = _opt("Start over", "reset")
+
+
+def _t(key: str, tone: str | None = None, **params) -> dict:
+    """One approved message by key. The text is English; the call demo can re-word it per language."""
+    message = {"text": wording.MESSAGES[key]["en"].format(**params), "key": key, "params": params}
+    if tone:
+        message["tone"] = tone
+    return message
 
 
 def _reply(state: dict, messages, options=(), input: dict | None = None, **extra) -> dict:
@@ -113,6 +127,8 @@ def _looks_like_name(text: str) -> bool:
 
 
 _WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+# Other ways callers name a weekday (Hindi and Hinglish).
+_WEEKDAY_ALIASES = {6: ("रविवार", "इतवार", "ravivar", "raviwar", "itwar", "itvaar")}
 
 
 def _closed_weekday_in(text: str) -> int | None:
@@ -121,24 +137,26 @@ def _closed_weekday_in(text: str) -> int | None:
         name = _WEEKDAYS[weekday]
         if re.search(rf"\b{name}s?\b|\b{name[:3]}\b", text, re.I):
             return weekday
+        if any(alias in text.lower() for alias in _WEEKDAY_ALIASES.get(weekday, ())):
+            return weekday
     return None
 
 
-def _explain_closed_day(db: Session, data: dict, weekday: int) -> list[str]:
+def _explain_closed_day(db: Session, data: dict, weekday: int) -> list[dict]:
     """Say why the requested day is unavailable and point the search at the next open day.
 
     Never skips the closed day silently: the patient is always told the clinic is closed.
     """
     now = utils.now()
     closed_day = next(d for d in (now.date() + timedelta(days=i) for i in range(7)) if d.weekday() == weekday)
-    closure = clinic.closed_day_message(db, closed_day)
+    name = clinic.get_clinic(db).name
     data.update(date=availability.next_open_day(closed_day).isoformat(), date_done=True, skip=0)
     found = _find_slots(db, data, now)
     if found:
-        return [f"{closure} The next available appointments are on {found[0][0].start_time:%A}."]
+        return [_t("closed_day_next", clinic=name, weekday=f"{closed_day:%A}", next_weekday=f"{found[0][0].start_time:%A}")]
     # The next open day is beyond the booking window, so be clear about what is being offered instead.
     data["date"] = None
-    return [closure, "Appointments can be booked up to 7 days ahead, so here are the earliest available times."]
+    return [_t("closed_day", clinic=name, weekday=f"{closed_day:%A}"), _t("booking_window")]
 
 
 def _pick_by_text(text: str, choices: list[tuple[str, object]]):
@@ -180,18 +198,14 @@ def _welcome(db: Session) -> dict:
     name = clinic.get_clinic(db).name
     return _reply(
         _idle({}),
-        [
-            f"Hello, and welcome to {name}. I can help you book a consultation, answer general questions "
-            "about the clinic, or ask our front desk to call you.",
-            "I can't give dental or medical advice.",
-        ],
+        [_t("welcome", clinic=name), _t("no_advice")],
         [_opt(prompt, "say", prompt) for prompt in knowledge.SUGGESTED_PROMPTS],
     )
 
 
 def _route(db: Session, state: dict, text: str) -> dict:
     if not text:
-        return _reply(state, ["How can I help? You can type a question or choose an option."], [_BOOKING, _PERSON])
+        return _reply(state, [_t("how_can_i_help")], [_BOOKING, _PERSON])
     if _HUMAN.search(text):
         return _start_callback(db, state, "human")
     if _SCHEME.search(text):
@@ -211,11 +225,10 @@ def _route(db: Session, state: dict, text: str) -> dict:
     if _BOOK.search(text):
         return _start_booking(db, state, service)
     if service:
-        answer = knowledge.SERVICE_ANSWER.format(service=service.name)
         return _reply(
             state,
-            [answer, "Would you like to book a consultation?"],
-            [_opt(f"Book for {service.name}", "intent", f"book:{service.id}"), _PERSON],
+            [_t("service_answer", service=service.name), _t("book_question")],
+            [{**_opt(f"Book for {service.name}", "intent", f"book:{service.id}"), "params": {"service": service.name}}, _PERSON],
             answered="service",
         )
     if topic:
@@ -223,7 +236,7 @@ def _route(db: Session, state: dict, text: str) -> dict:
     if _GREETING.search(text):
         return _welcome(db)
     if _THANKS.search(text):
-        return _reply(state, ["You're welcome. Is there anything else I can help with?"], [_BOOKING, _PERSON])
+        return _reply(state, [_t("thanks")], [_BOOKING, _PERSON])
     return _start_callback(db, state, "unsupported", text)
 
 
@@ -246,16 +259,17 @@ def _mentioned_service(db: Session, text: str) -> Service | None:
 def _answer(db: Session, state: dict, topic: dict) -> dict:
     profile = clinic.get_clinic(db)
     services = appointments.list_services(db)
-    text = topic["answer"].format(
-        clinic=profile.name,
-        address=profile.address,
-        phone=profile.phone,
-        email=profile.email or "not listed",
-        doctors="\n".join(f"• {d.name}, {d.speciality}" for d in availability.list_doctors(db)),
-        services="\n".join(f"• {s.name}" for s in services),
-        fees="\n".join(f"• {s.name}: {profile.currency_symbol}{s.fee} (demo)" for s in services),
-    )
-    return _reply(state, [text], [_BOOKING, _PERSON], answered=topic["id"])
+    params = {
+        "clinic": profile.name,
+        "address": profile.address,
+        "phone": profile.phone,
+        "email": profile.email or "not listed",
+        "doctors": "\n".join(f"• {d.name}, {d.speciality}" for d in availability.list_doctors(db)),
+        "services": "\n".join(f"• {s.name}" for s in services),
+        "fees": "\n".join(f"• {s.name}: {profile.currency_symbol}{s.fee} (demo)" for s in services),
+    }
+    message = {"text": topic["answer"].format(**params), "key": f"topic_{topic['id']}", "params": params}
+    return _reply(state, [message], [_BOOKING, _PERSON], answered=topic["id"])
 
 
 # --- Booking flow ------------------------------------------------------------------
@@ -270,7 +284,6 @@ _BOOKING_STEPS = (
     ("slot", "slot_id"),
     ("confirm", "confirmed"),
 )
-_CHOOSE = "Please choose one of the options below."
 
 
 def _start_booking(
@@ -283,7 +296,7 @@ def _start_booking(
         data["service_id"] = service.id
     state = {"flow": "booking", "step": None, "data": data}
     prefix = _explain_closed_day(db, data, closed_weekday) if closed_weekday is not None else []
-    return _advance(db, state, prefix + [knowledge.BOOKING_GUIDANCE])
+    return _advance(db, state, prefix + [_t("booking_guidance")])
 
 
 def _advance(db: Session, state: dict, prefix=()) -> dict:
@@ -305,22 +318,22 @@ def _booking_prompt(db: Session, state: dict, prefix=()) -> dict:
     step, data, messages = state["step"], state["data"], list(prefix)
     tail = [_PERSON, _RESTART]
     if step == "patient_type":
-        messages.append("Has the patient visited us before?")
+        messages.append(_t("ask_patient_type"))
         return _reply(
             state, messages, [_opt("New patient", "pick", "new"), _opt("Existing patient", "pick", "existing")] + tail
         )
     if step == "name":
-        messages.append("What is the patient's full name?")
+        messages.append(_t("ask_name"))
         return _reply(
             state, messages, tail, {"type": "text", "label": "Full name", "placeholder": "Full name", "autocomplete": "name"}
         )
     if step == "mobile":
-        messages.append("What mobile number can we reach you on?")
+        messages.append(_t("ask_mobile"))
         return _reply(
             state, messages, tail, {"type": "tel", "label": "Mobile number", "placeholder": "Mobile number", "autocomplete": "tel"}
         )
     if step == "email":
-        messages.append("An email address is optional. You can skip this.")
+        messages.append(_t("ask_email"))
         return _reply(
             state,
             messages,
@@ -328,10 +341,10 @@ def _booking_prompt(db: Session, state: dict, prefix=()) -> dict:
             {"type": "email", "label": "Email (optional)", "placeholder": "Email (optional)", "autocomplete": "email"},
         )
     if step == "service":
-        messages.append("What is the visit for?")
+        messages.append(_t("ask_service"))
         return _reply(state, messages, [_opt(s.name, "pick", s.id) for s in appointments.list_services(db)] + tail)
     if step == "doctor":
-        messages.append("Do you have a preferred doctor?")
+        messages.append(_t("ask_doctor"))
         options = [_opt("No preference", "pick", "any")]
         options += [_opt(f"{d.name}, {d.speciality}", "pick", d.id) for d in availability.list_doctors(db)]
         if data.get("no_slots"):
@@ -339,7 +352,7 @@ def _booking_prompt(db: Session, state: dict, prefix=()) -> dict:
         return _reply(state, messages, options + tail)
     if step == "date":
         today = utils.now().date()
-        messages.append("Which day would you prefer?")
+        messages.append(_t("ask_date"))
         options = [_opt("Earliest available", "pick", "earliest")]
         options += [_opt(_day_label(d, today), "pick", d.isoformat()) for d in _open_days(today)]
         return _reply(state, messages, options + tail)
@@ -377,7 +390,7 @@ def _offer_slots(db: Session, state: dict, messages: list) -> dict:
     if not found and data.get("date"):
         found = _find_slots(db, data, now, ignore_date=True)
         if found:
-            messages.append("There are no free times from that day onwards, so here are the next available ones.")
+            messages.append(_t("slots_from_later"))
     if not found:
         # Remember who they wanted, so the waitlist request can carry it.
         data["waitlist_doctor_id"] = data.get("doctor_id")
@@ -385,10 +398,7 @@ def _offer_slots(db: Session, state: dict, messages: list) -> dict:
         data.pop("doctor_done", None)
         data.pop("doctor_id", None)
         state["step"] = "doctor"
-        messages.append(
-            "There are no free consultation times for that choice in the next 7 days. "
-            "You can choose another doctor, or join the waitlist and our staff will contact you if a time becomes free."
-        )
+        messages.append(_t("no_slots"))
         return _booking_prompt(db, state, messages)
     data.pop("no_slots", None)
     data["waitlist_doctor_id"] = data.get("doctor_id")
@@ -396,21 +406,17 @@ def _offer_slots(db: Session, state: dict, messages: list) -> dict:
     skip = _as_int(data.get("skip")) or 0
     if skip >= len(found):
         skip = 0
-        messages.append("Those were all the times I could find. Here are the first options again.")
+        messages.append(_t("slots_wrapped"))
     data["skip"] = skip
     offered = found[skip : skip + SLOTS_PER_OFFER]
     today = now.date()
-    messages.append(
-        "Here are three available times:" if len(offered) == SLOTS_PER_OFFER else "Here are the available times:"
-    )
-    options = [
-        _opt(
-            f"{_day_label(slot.start_time.date(), today)} · {utils.fmt_time(slot.start_time)} · {doctor.name}",
-            "slot",
-            slot.id,
-        )
-        for slot, doctor in offered
-    ]
+    messages.append(_t("slots_three" if len(offered) == SLOTS_PER_OFFER else "slots_some"))
+    options = []
+    for slot, doctor in offered:
+        day, time = _day_label(slot.start_time.date(), today), utils.fmt_time(slot.start_time)
+        option = _opt(f"{day} · {time} · {doctor.name}", "slot", slot.id)
+        option["params"] = {"day": day, "time": time, "doctor": doctor.name}
+        options.append(option)
     if len(found) > SLOTS_PER_OFFER:
         options.append(_opt("Show other times", "more"))
     options.append(_opt("Change day", "change_date"))
@@ -426,15 +432,18 @@ def _confirm_prompt(db: Session, state: dict, messages: list) -> dict:
         data.pop("slot_id", None)
         if service is None:
             data.pop("service_id", None)
-        return _advance(db, state, messages + [_CHOOSE])
+        return _advance(db, state, messages + [_t("choose")])
     messages.append(
-        "Please check the details:\n"
-        f"• Patient: {data.get('name')}\n"
-        f"• Mobile: {data.get('mobile')}\n"
-        f"• Visit: {service.name}\n"
-        f"• Doctor: {slot.doctor.name}\n"
-        f"• When: {utils.fmt_date(slot.start_time)} at {utils.fmt_time(slot.start_time)} "
-        f"({slot.duration_minutes} min)"
+        _t(
+            "confirm_details",
+            name=str(data.get("name")),
+            mobile=str(data.get("mobile")),
+            service=service.name,
+            doctor=slot.doctor.name,
+            date=utils.fmt_date(slot.start_time),
+            time=utils.fmt_time(slot.start_time),
+            minutes=slot.duration_minutes,
+        )
     )
     return _reply(
         state,
@@ -446,7 +455,7 @@ def _confirm_prompt(db: Session, state: dict, messages: list) -> dict:
 def _booking_turn(db: Session, state: dict, text: str, action, value) -> dict:
     data, step = state["data"], state["step"]
 
-    def retry(message: str) -> dict:
+    def retry(message) -> dict:
         return _booking_prompt(db, state, [message])
 
     # No suitable time: the patient can ask to be put on the waitlist instead of booking.
@@ -456,17 +465,17 @@ def _booking_turn(db: Session, state: dict, text: str, action, value) -> dict:
     if step == "waitlist_time":
         choice = value if action == "pick" else _pick_by_text(text, [("morning", "MORNING"), ("afternoon", "AFTERNOON"), ("any time", "ANY")])
         if choice not in ("MORNING", "AFTERNOON", "ANY"):
-            return _waitlist_prompt(state, [_CHOOSE])
+            return _waitlist_prompt(state, [_t("choose")])
         return _join_waitlist(db, state, choice)
 
     if step == "patient_type":
         choice = value if action == "pick" else _pick_by_text(text, [("new patient", "new"), ("existing patient", "existing")])
         if choice not in ("new", "existing"):
-            return retry(_CHOOSE)
+            return retry(_t("choose"))
         data["patient_type"] = choice
     elif step == "name":
         if not _looks_like_name(text):
-            return retry("Please enter the patient's full name.")
+            return retry(_t("enter_full_name"))
         data["name"] = text
     elif step == "mobile":
         try:
@@ -479,13 +488,13 @@ def _booking_turn(db: Session, state: dict, text: str, action, value) -> dict:
         elif _EMAIL_RE.match(text) and len(text) <= 120:
             data["email"] = text
         else:
-            return retry("That doesn't look like an email address. Please try again, or skip this step.")
+            return retry(_t("bad_email"))
         data["email_done"] = True
     elif step == "service":
         services = appointments.list_services(db)
         chosen = value if action == "pick" else _pick_by_text(text, [(s.name, s.id) for s in services])
         if _as_int(chosen) not in [s.id for s in services]:
-            return retry(_CHOOSE)
+            return retry(_t("choose"))
         data["service_id"] = _as_int(chosen)
     elif step == "doctor":
         doctors = availability.list_doctors(db)
@@ -497,7 +506,7 @@ def _booking_turn(db: Session, state: dict, text: str, action, value) -> dict:
         elif _as_int(chosen) in [d.id for d in doctors]:
             data["doctor_id"] = _as_int(chosen)
         else:
-            return retry(_CHOOSE)
+            return retry(_t("choose"))
         data["doctor_done"] = True
     elif step == "date":
         today = utils.now().date()
@@ -513,7 +522,7 @@ def _booking_turn(db: Session, state: dict, text: str, action, value) -> dict:
         elif chosen in [d.isoformat() for d in days]:
             data["date"] = chosen
         else:
-            return retry(_CHOOSE)
+            return retry(_t("choose"))
         data["date_done"] = True
         data["skip"] = 0
     elif step == "slot":
@@ -527,20 +536,20 @@ def _booking_turn(db: Session, state: dict, text: str, action, value) -> dict:
         if closed_weekday is not None:
             return _booking_prompt(db, state, _explain_closed_day(db, data, closed_weekday))
         if action != "slot" or db.get(Slot, _as_int(value) or 0) is None:
-            return retry("Please choose one of the times below.")
+            return retry(_t("choose_time"))
         data["slot_id"] = _as_int(value)
     elif step == "confirm":
         if action == "change_time":
             data.pop("slot_id", None)
             return _advance(db, state)
         if action != "confirm":
-            return retry(_CHOOSE)
+            return retry(_t("choose"))
         return _book(db, state)
     return _advance(db, state)
 
 
 def _waitlist_prompt(state: dict, prefix=()) -> dict:
-    messages = list(prefix) + ["I can add you to our waitlist. When would you prefer to come in?"]
+    messages = list(prefix) + [_t("waitlist_offer")]
     options = [_opt("Morning", "pick", "MORNING"), _opt("Afternoon", "pick", "AFTERNOON"), _opt("Any time", "pick", "ANY")]
     return _reply(state, messages, options + [_PERSON, _RESTART])
 
@@ -580,11 +589,7 @@ def _join_waitlist(db: Session, state: dict, time_preference: str) -> dict:
         return _booking_prompt(db, state, [{"text": exc.message, "tone": "notice"}])
     return _reply(
         _idle(data),
-        [
-            {"text": f"Thank you, {name}. You are on our waitlist.", "tone": "success"},
-            "Nothing has been booked. If a suitable time becomes free, our staff will contact you during clinic hours "
-            f"to offer it. Your waitlist reference is W-{entry.id}.",
-        ],
+        [_t("waitlist_joined", "success", name=name), _t("waitlist_details", reference=entry.id)],
         [_BOOKING, _PERSON],
         waitlist={"reference": f"W-{entry.id}", "status": entry.status},
     )
@@ -644,9 +649,8 @@ def _book(db: Session, state: dict) -> dict:
     return _reply(
         _idle(data),
         [
-            {"text": f"Thank you, {name}. Your consultation request is saved.", "tone": "success"},
-            f"Your booking is {appointment.status} until our front desk confirms it. "
-            f"Your reference is #{appointment.id}.",
+            _t("booking_saved", "success", name=name),
+            _t("booking_status", status=appointment.status, reference=appointment.id),
         ],
         [_PERSON, _opt("Ask something else", "reset")],
         booking=booking,
@@ -658,7 +662,7 @@ def _start_callback(db: Session, state: dict, category: str, question: str = "")
     data = state["data"]
     data["cb"] = {"category": category, "question": question[:300]}
     state["flow"] = "callback"
-    intro = knowledge.CALLBACK_INTROS[category]
+    intro = _t(f"callback_{category}")
     if category == "cghs":
         state["step"] = "scheme"
         return _callback_prompt(state, [intro], ask=False)
@@ -673,14 +677,14 @@ def _callback_prompt(state: dict, prefix=(), ask: bool = True) -> dict:
     tail = [_opt("No thanks", "reset")]
     if step == "scheme":
         if ask:
-            messages.append("Which scheme is your enquiry about?")
+            messages.append(_t("ask_scheme"))
         return _reply(
             state, messages, [_opt("CGHS", "pick", "CGHS"), _opt("ECHS", "pick", "ECHS"), _opt("Not sure", "pick", "Not sure")] + tail
         )
     if step == "name":
-        messages.append("Who should we ask for? Please enter a name.")
+        messages.append(_t("ask_callback_name"))
         return _reply(state, messages, tail, {"type": "text", "label": "Name", "placeholder": "Name", "autocomplete": "name"})
-    messages.append("What mobile number should we call?")
+    messages.append(_t("ask_callback_mobile"))
     return _reply(
         state, messages, tail, {"type": "tel", "label": "Mobile number", "placeholder": "Mobile number", "autocomplete": "tel"}
     )
@@ -694,12 +698,12 @@ def _callback_turn(db: Session, state: dict, text: str, action, value) -> dict:
     if step == "scheme":
         choice = value if action == "pick" else _pick_by_text(text, [("cghs", "CGHS"), ("echs", "ECHS"), ("not sure", "Not sure")])
         if choice not in ("CGHS", "ECHS", "Not sure"):
-            return _callback_prompt(state, [_CHOOSE])
+            return _callback_prompt(state, [_t("choose")])
         request["scheme"] = choice
         state["step"] = "name"
     elif step == "name":
         if not _looks_like_name(text):
-            return _callback_prompt(state, ["Please enter a name."])
+            return _callback_prompt(state, [_t("enter_name")])
         data["name"] = text
         state["step"] = "mobile"
     else:
@@ -749,8 +753,8 @@ def _create_callback(db: Session, state: dict, prefix=()) -> dict:
         return _callback_prompt(state, list(prefix) + [exc.message])
 
     messages = list(prefix)
-    messages.append({"text": f"Thank you, {task.name}. I've passed your request to our front desk.", "tone": "success"})
-    messages.append(f"{knowledge.CALLBACK_PROMISE} Your reference is C-{task.id}.")
+    messages.append(_t("callback_saved", "success", name=task.name))
+    messages.append(_t("callback_reference", reference=task.id))
     return _reply(
         _idle(data),
         messages,

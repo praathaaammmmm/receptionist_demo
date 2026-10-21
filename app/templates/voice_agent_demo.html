@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#091D3E">
+  <meta name="robots" content="noindex">
+  <title>AI Voice Receptionist Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..600&family=Instrument+Sans:wght@400..700&display=swap">
+  <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+  <link rel="stylesheet" href="{{ asset('css/assistant.css') }}">
+  <link rel="stylesheet" href="{{ asset('css/voice-agent.css') }}">
+</head>
+<body class="va-page">
+  <a class="skip-link" href="#va-input">Skip to caller input</a>
+  <div class="demo-banner">Browser-based interactive prototype · sample data only · not connected to a live clinic phone number · no medical advice</div>
+
+  <header class="va-top">
+    <div class="va-top-row">
+      <a class="btn btn-sm" href="/" data-leave-guard><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Back to dashboard</a>
+      <fieldset class="va-lang" id="va-lang">
+        <legend class="sr-only">Call language</legend>
+        {% for language in languages %}
+        <label class="va-lang-choice"><input type="radio" name="va-language" value="{{ language.code }}"{% if loop.first %} checked{% endif %}><span lang="{{ language.html_lang }}">{{ language.label }}</span></label>
+        {% endfor %}
+      </fieldset>
+    </div>
+    <h1>AI Voice Receptionist Demo</h1>
+    <p class="va-subtitle">Interactive prototype using sample data. Not connected to a live clinic phone number.</p>
+  </header>
+
+  <main class="va-layout">
+    <section class="va-call" aria-label="Demo call">
+      <div class="va-statusbar">
+        <p class="va-call-status" id="va-call-status" data-state="idle"><span class="status-dot" aria-hidden="true"></span><span id="va-call-status-text">Not in a call</span></p>
+        <p class="va-timer" id="va-timer" role="timer" aria-label="Call duration">00:00</p>
+        <p class="va-lang-now">Language: <strong id="va-lang-now">English</strong></p>
+        <p class="va-audio-status" id="va-audio-status" data-state="idle" role="status" aria-live="polite"><span class="status-dot" aria-hidden="true"></span><span id="va-audio-status-text">Audio starts with the call</span></p>
+      </div>
+
+      <div class="va-start" id="va-start">
+        <button class="btn btn-primary va-start-btn" id="va-start-btn" type="button">Start demo call</button>
+        <details class="va-settings" id="va-settings">
+          <summary>Demo settings <span class="muted">(simulation only)</span></summary>
+          <div class="va-settings-grid">
+            <label>Transfer to reception
+              <select id="va-set-transfer">
+                <option value="auto">Use the real IST transfer window</option>
+                <option value="available">Simulate available</option>
+                <option value="unavailable">Simulate unavailable</option>
+              </select>
+            </label>
+            <label>Caller ID
+              <select id="va-set-caller">
+                <option value="unknown">Unknown or withheld</option>
+                <option value="present">Present (sample number)</option>
+              </select>
+            </label>
+            <label>Clinic hours
+              <select id="va-set-clinic">
+                <option value="auto">Use the real IST time</option>
+                <option value="open">Simulate open</option>
+                <option value="closed">Simulate closed</option>
+              </select>
+            </label>
+          </div>
+          <p class="muted small">These only change this demo call. Transfers are always simulated: there is no reception line, so an attempted transfer goes unanswered and the agent takes callback details.</p>
+        </details>
+        <p class="va-context muted small" id="va-context" hidden></p>
+      </div>
+
+      <div class="chat va-chat">
+        <div id="va-log" class="chat-log va-log" role="log" aria-live="polite" aria-relevant="additions" aria-label="Live conversation transcript">
+          <p class="va-empty" id="va-empty">Press “Start demo call”, or choose a scenario below. The assistant greets the caller, then listens.</p>
+        </div>
+
+        <div class="va-heard" id="va-heard" hidden aria-live="polite">
+          <label class="va-heard-label" for="va-heard-text">You said: <span class="muted">(not sent yet: check or edit it)</span></label>
+          <textarea class="va-heard-text" id="va-heard-text" rows="2" maxlength="500"></textarea>
+          <p class="va-heard-warning" id="va-heard-warning" hidden></p>
+          <div class="va-heard-actions">
+            <button class="btn btn-sm btn-primary" id="va-heard-send" type="button">Send this</button>
+            <button class="btn btn-sm" id="va-heard-retry" type="button">Try again</button>
+            <button class="btn btn-sm btn-ghost" id="va-heard-typed" type="button">Type instead</button>
+          </div>
+          <p class="muted small va-heard-meta" id="va-heard-meta"></p>
+        </div>
+
+        <div class="va-dock" id="va-dock">
+          <button class="va-mic" id="va-mic" type="button" aria-pressed="false" aria-describedby="va-mic-note">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg>
+            <span id="va-mic-label">Tap to speak</span>
+          </button>
+          <form id="va-form" class="va-form" autocomplete="off" novalidate>
+            <label class="sr-only" for="va-input">What the caller says</label>
+            <input id="va-input" name="text" type="text" maxlength="500" placeholder="Or type what the caller says">
+            <button class="btn btn-primary" id="va-send" type="submit">Send</button>
+          </form>
+          <button class="btn va-end" id="va-end" type="button" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 14.5c5-4.7 13-4.7 18 0l-2 2.5-3.5-1.5v-2.5a10 10 0 0 0-7 0v2.5L5 17z"/></svg>
+            End call
+          </button>
+        </div>
+        <p class="va-mic-note muted small" id="va-mic-note">Tap to speak and say one phrase: listening stops by itself when you pause. Microphone transcription is processed by this demo server and is not stored. Typed input always works.</p>
+      </div>
+
+      <div class="va-audio-controls">
+        <button class="btn btn-sm" id="va-mute" type="button" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>
+          <span id="va-mute-label">Mute voice</span>
+        </button>
+        <button class="btn btn-sm" id="va-replay" type="button" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4.5h4.5"/></svg>
+          Replay last response
+        </button>
+        <p class="muted small va-voice-name" id="va-voice-name"></p>
+        {% if reference.available %}
+        <fieldset class="va-voice-mode" id="va-voice-mode">
+          <legend>Voice <span class="tag tag-demo">Demo only</span></legend>
+          <label><input type="radio" name="va-voice" value="standard" checked> Standard local voice</label>
+          <label><input type="radio" name="va-voice" value="reference"> Reference voice (authorised demo)</label>
+        </fieldset>
+        {% endif %}
+        <p class="va-voice-notice" id="va-voice-notice" role="status" hidden></p>
+      </div>
+
+      <section class="va-scenarios" aria-labelledby="va-scenarios-title">
+        <h2 id="va-scenarios-title">Scenarios</h2>
+        <p class="muted small">Each one sends a realistic caller phrase through the same conversation engine as typed or spoken input.</p>
+        <div class="va-scenario-list">
+          {% for s in scenarios %}
+          <button class="chat-option va-scenario" type="button" data-scenario="{{ s.id }}">{{ s.label }}</button>
+          {% endfor %}
+        </div>
+      </section>
+    </section>
+
+    <aside class="va-team" aria-labelledby="va-team-title">
+      <h2 id="va-team-title">What the clinic team sees</h2>
+      <dl class="va-facts">
+        <div><dt>Caller</dt><dd id="va-f-name">Not given yet</dd></div>
+        <div><dt>Mobile</dt><dd id="va-f-phone">Not given yet</dd></div>
+        <div><dt>Language</dt><dd id="va-f-language">English</dd></div>
+        <div><dt>Detected reason</dt><dd id="va-f-reason">None yet</dd></div>
+        <div><dt>Workflow state</dt><dd id="va-f-state">No call in progress</dd></div>
+        <div><dt>Policy path</dt><dd id="va-f-path">None yet</dd></div>
+        <div><dt>AI response source</dt><dd id="va-f-source">None yet</dd></div>
+        <div><dt>Visit details</dt><dd id="va-f-lead">Not collected</dd></div>
+        <div><dt>Transfer</dt><dd id="va-f-transfer">Not requested</dd></div>
+        <div><dt>Callback task</dt><dd id="va-f-callback">None</dd></div>
+        <div><dt>Call outcome</dt><dd id="va-f-outcome">Not logged yet</dd></div>
+      </dl>
+      <details class="va-demo-details" id="va-demo-details">
+        <summary>Demo details</summary>
+        <dl class="va-facts">
+          <div><dt>Understood by</dt><dd id="va-f-engine">{{ understanding.label }}</dd></div>
+          <div><dt>Speech-to-text</dt><dd id="va-f-stt">{% if microphone.available %}{{ microphone.engine }} {{ microphone.model }}, {{ microphone.runs }}{% else %}Not installed: typed input only{% endif %}</dd></div>
+          <div><dt>Hinglish mode</dt><dd>{{ microphone.modes.hinglish }}</dd></div>
+          <div><dt>Last transcript</dt><dd id="va-f-transcript">None yet</dd></div>
+        </dl>
+        <p class="muted small">Replies are always spoken from approved wording. A language model, when configured, only chooses which approved answer fits; safety rules run before it and never depend on it.</p>
+      </details>
+      <details class="va-demo-details" id="va-timing">
+        <summary>Turn timing <span class="muted">(developer)</span></summary>
+        <ol class="va-timing-list" id="va-timing-list"><li><span>No turn yet</span></li></ol>
+        <p class="muted small">For the latest turn only. Kept in this page, never saved to the call log, callbacks or analytics.</p>
+      </details>
+      <div class="va-result" id="va-result" hidden>
+        <p class="va-result-text" id="va-result-text"></p>
+        <a class="btn btn-primary btn-sm" id="va-view-dashboard" href="/" data-leave-guard>View on dashboard</a>
+      </div>
+      <nav class="va-links" id="va-links" aria-label="Related records">
+        <a class="btn btn-sm" href="/" data-leave-guard data-link="dashboard">Dashboard</a>
+        <a class="btn btn-sm" href="/#call-activity" data-leave-guard data-link="calls">Call activity</a>
+        <a class="btn btn-sm" href="/#callback-tasks" data-leave-guard data-link="callbacks">Callback queue</a>
+        <a class="btn btn-sm" href="/patients" data-leave-guard data-link="timeline" hidden>Patient timeline</a>
+      </nav>
+      <p class="muted small">Callback tasks and the call log are written to this demo's sample database through the same services the dashboard uses. Nothing books an appointment.</p>
+    </aside>
+  </main>
+
+  <footer class="va-footer">
+    <ul>
+      <li>This is a browser-based interactive prototype. It uses sample, demo data.</li>
+      <li>It is not connected to a live clinic telephone number, and no real call is placed or received.</li>
+      <li>It does not provide medical advice. Urgent symptoms are told to call 112.</li>
+      <li>It records workflow outcomes (callback tasks and a call log) but is not a production recording system.</li>
+      <li>Microphone transcription is processed by this demo server and is not stored: each phrase is transcribed in memory and discarded. Audio is not sent to Google or any other speech service.</li>
+    </ul>
+  </footer>
+  <noscript><p class="alert alert-error">The voice agent demo needs JavaScript.</p></noscript>
+  {% include "_leave_dialog.html" %}
+  <script type="application/json" id="va-config">{{ config | tojson }}</script>
+  <script src="{{ asset('js/leave-guard.js') }}"></script>
+  <script src="{{ asset('js/call-audio.js') }}"></script>
+  <script src="{{ asset('js/voice-agent.js') }}"></script>
+</body>
+</html>

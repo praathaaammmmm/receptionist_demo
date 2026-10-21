@@ -114,6 +114,8 @@ def set_status(db: Session, appointment_id: int, new_status: str, actor: str = S
         current, wanted = (str(s).replace("_", "-").lower() for s in (appointment.status, new_status))
         raise ValidationError(f"A {current} booking cannot be changed to {wanted}.")
     appointment.status = new_status
+    if new_status == STATUS_ARRIVED:
+        appointment.arrived_at, appointment.arrived_by = utils.now(), actor
     # Remember when and by whom, for the patient timeline (no other table keeps this).
     db.add(
         TimelineEvent(

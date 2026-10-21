@@ -92,10 +92,12 @@
 {% endmacro %}
 
 {# Doctor-set operational flags, as reception sees them: the name and its plain meaning, never a reason. #}
-{% macro reception_flags(patient, block=false) %}
+{# `sent_by`: on the patient page, the doctors who have sent this patient a real follow-up request. A
+   "Needs follow-up" flag from any other doctor is advisory only, and the page says nothing was sent. #}
+{% macro reception_flags(patient, block=false, sent_by=none) %}
   {% for f in patient.flags if f.active %}
   {% if block %}
-  <p class="doctor-flag is-flag is-block">Doctor flag: {{ f.label }}<span>{{ f.meaning }} Set by {{ f.doctor.name }}.</span></p>
+  <p class="doctor-flag is-flag is-block">Doctor flag: {{ f.label }}<span>{{ f.meaning }} Set by {{ f.doctor.name }}.{% if sent_by is not none and f.kind == 'NEEDS_FOLLOW_UP' and f.doctor_id not in sent_by %} <strong class="flag-no-request">No follow-up request has been sent to reception yet.</strong>{% endif %}</span></p>
   {% else %}
   <span class="doctor-flag is-flag" title="{{ f.meaning }} Set by {{ f.doctor.name }}.">Doctor flag: {{ f.label }}</span>
   {% endif %}

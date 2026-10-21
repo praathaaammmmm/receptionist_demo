@@ -18,7 +18,7 @@ from .pages import NOTICES, redirect, render
 
 router = APIRouter()
 
-STATUS_NOTICES = {STATUS_ARRIVED: "arrived", STATUS_COMPLETED: "completed", STATUS_NO_SHOW: "no_show"}
+STATUS_NOTICES = {STATUS_ARRIVED: "arrived_by_doctor", STATUS_COMPLETED: "completed", STATUS_NO_SHOW: "no_show"}
 
 
 def schedule_view(
@@ -95,6 +95,7 @@ def workspace(
         "mask_mobile": board_service.mask_mobile,
         "arrival_of": board_service.arrival,
         "awaiting": consultations.awaiting_confirmation(db, doctor.id),
+        "pending_today": consultations.pending_today(db, doctor.id),
         "counts": {
             "waiting": sum(a.status == STATUS_CONFIRMED for a in todays),
             "in_clinic": sum(a.status == STATUS_ARRIVED for a in todays),
@@ -221,6 +222,17 @@ def doctor_set_status(
     return redirect(
         "/doctor", "consultation", doctor_id=doctor_id, appointment_id=appointment_id, notice=STATUS_NOTICES.get(status, "saved")
     )
+
+
+@router.post("/doctor/{doctor_id}/appointments/{appointment_id}/confirm", include_in_schema=False)
+def doctor_confirm_appointment(request: Request, doctor_id: int, appointment_id: int, db: Session = Depends(get_db)):
+    """Pending → Confirmed, only for this doctor's own booking. Reception's Confirm is unchanged."""
+    try:
+        _appointment, changed = consultations.confirm_appointment(db, doctor_id, appointment_id)
+    except ClinicError as exc:
+        return workspace(request, db, doctor_id, appointment_id, exc)
+    notice = "doctor_confirmed" if changed else "already_confirmed"
+    return redirect("/doctor", "consultation", doctor_id=doctor_id, appointment_id=appointment_id, notice=notice)
 
 
 @router.post("/doctor/{doctor_id}/appointments/{appointment_id}/start", include_in_schema=False)

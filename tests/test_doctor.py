@@ -250,7 +250,7 @@ def test_workspace_lists_todays_confirmed_patients_for_the_selected_doctor(clien
     assert confirmed["patient"]["mobile"] in listing
     assert confirmed["service"]["name"] in listing
     assert confirmed["source"] in listing
-    assert "CONFIRMED" in listing and "Mark arrived" in listing
+    assert "CONFIRMED" in listing and "Mark patient arrived" in listing
     for other in pending:  # unconfirmed bookings are reception's job, not listed for the doctor
         if other["doctor"]["id"] == doctor_id:
             assert f"appointments/{other['id']}/status" not in listing

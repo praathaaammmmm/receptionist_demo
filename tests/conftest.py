@@ -13,6 +13,18 @@ def no_voice_pack(request, monkeypatch, tmp_path):
         monkeypatch.setattr("app.config.VOICE_DIR", tmp_path / "no-voices")
 
 
+@pytest.fixture(autouse=True)
+def no_speech_model_or_language_model(request, monkeypatch, tmp_path):
+    """Tests run without the local speech-to-text model and without a language model, whatever is installed
+    or set in the environment, unless marked `real_stt`."""
+    if "real_stt" not in request.keywords:
+        monkeypatch.setattr("app.config.VOICE_AGENT_STT_DIR", tmp_path / "no-stt")
+    monkeypatch.setattr("app.config.VOICE_AGENT_LLM_PROVIDER", "none")
+    if "real_reference" not in request.keywords:  # no reference clips, no worker (port 9 refuses connections)
+        monkeypatch.setattr("app.config.VOICE_AGENT_REFERENCE_DIR", tmp_path / "no-reference")
+        monkeypatch.setattr("app.config.VOICE_AGENT_REFERENCE_WORKER_URL", "http://127.0.0.1:9")
+
+
 @pytest.fixture
 def client(tmp_path):
     """A fresh, seeded demo database per test."""

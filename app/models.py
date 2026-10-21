@@ -91,7 +91,10 @@ FOLLOWUP_CLOSED = "CLOSED"
 
 # Doctor-managed patient flags: (label, plain operational meaning for reception). No clinical reasoning.
 PATIENT_FLAGS = {
-    "NEEDS_FOLLOW_UP": ("Needs follow-up", "The doctor wants this patient seen again. Check Follow-ups for a booking request."),
+    "NEEDS_FOLLOW_UP": ("Needs follow-up", (
+        "The doctor has marked that this patient may need a follow-up. "
+        "Create or send a follow-up request from Doctor Workspace."
+    )),
     "PRIORITY_REVIEW": ("Priority review", "Give this patient priority: offer the earliest suitable time and let the doctor know when booked."),
     "DOCTOR_REVIEW_BEFORE_BOOKING": (
         "Do not schedule without doctor review", "Check with the doctor before booking any new appointment for this patient.",
@@ -117,6 +120,7 @@ CALLBACK_COMPLETED = "COMPLETED"
 CALLBACK_STATUSES = (CALLBACK_OPEN, CALLBACK_IN_PROGRESS, CALLBACK_COMPLETED)
 
 CALL_CHANNEL_VOICE_DEMO = "VOICE_DEMO"
+CALL_CHANNEL_VOICE_AGENT = "VOICE_AGENT"  # the browser voice agent demo (/voice-agent-demo)
 CALL_FAQ_ANSWERED = "FAQ_ANSWERED"
 CALL_BOOKING_CREATED = "BOOKING_CREATED"
 CALL_CALLBACK_CREATED = "CALLBACK_CREATED"
@@ -252,6 +256,10 @@ class Appointment(Base):
     source: Mapped[str] = mapped_column(String(20), default="STAFF")
     is_demo: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=lambda: utils.now())
+    # When and by whom the patient was recorded as arrived (added later, so nullable). `arrived_by` is the
+    # actor: STAFF (reception, including QR check-in) or DOCTOR (the doctor's manual demo arrival).
+    arrived_at: Mapped[datetime | None]
+    arrived_by: Mapped[str | None] = mapped_column(String(20))
 
     patient: Mapped[Patient] = relationship()
     doctor: Mapped[Doctor] = relationship()
@@ -298,6 +306,8 @@ class CallLog(Base):
     outcome: Mapped[str | None] = mapped_column(String(20))
     appointment_id: Mapped[int | None] = mapped_column(ForeignKey("appointments.id"))
     callback_task_id: Mapped[int | None] = mapped_column(ForeignKey("callback_tasks.id"))
+    # Language the caller chose on the call demo: "en", "hi" or "hinglish" (the latest one, if changed).
+    language: Mapped[str | None] = mapped_column(String(10))
 
     appointment: Mapped[Appointment | None] = relationship()
     callback_task: Mapped[CallbackTask | None] = relationship()

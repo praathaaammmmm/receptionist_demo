@@ -33,7 +33,7 @@ Pre-flight checks:
   walkthrough in section 6 was run in Firefox.
 - **Window size:** a normal laptop window (1366×768 or larger). For tab 1, optionally narrow the
   window or use the browser's phone view to show it as a patient would see it on a mobile.
-- **Sound:** on tab 2 press **Test speaker**. You should hear "Hello. This is the Smriti Raj
+- **Sound:** on tab 2 press **Test English voice** (and **Test Hindi voice** / **Test Hinglish voice** if presenting in those languages). You should hear "Hello. This is the Smriti Raj
   Dentistry appointment assistant." and see "Voice ready". If not, see section 4; the demo works
   without sound.
 - **Dashboard:** tab 3 shows 4 sample bookings, 0 open callback tasks and no AI call activity.
@@ -217,12 +217,12 @@ The transcript is the proof in this demo; sound is an extra.
 1. Carry on without it. Every step above works silently, and the page will say either "Muted" or
    "Text simulation mode — the conversation transcript remains fully functional."
 2. If the status says "Audio requires a click to start", click anywhere on the page, then
-   **Test speaker**.
+   **Test English voice** or **Test Hindi voice**.
 3. If the voice pack is missing (a fresh machine), install it once and restart the app:
 
    ```bash
    .venv/bin/pip install -r requirements-voice.txt
-   .venv/bin/python scripts/download_voice.py
+   .venv/bin/python scripts/download_voice.py --all-demo-languages
    ```
 
 4. Check the laptop volume and output device. The voice is generated on this computer; it does not
@@ -251,7 +251,11 @@ The transcript is the proof in this demo; sound is an extra.
   patients cannot check themselves in.
 - The doctor calendar is not linked to Google Calendar or any other calendar, has no rooms or
   equipment, and does not reschedule patients; blocking leave never moves an existing booking.
-- The call voice is British English; a natural Indian-English voice needs a different voice source.
+- The call voices are open research voices: English uses a British English voice (Cori); Hindi
+  and Hinglish use a single Hindi speaker. Hinglish is displayed in Roman Hindi and voiced by the
+  Hindi local model from a reviewed Devanagari script. Names not in the approved pronunciation list
+  (callers' own names, doctors added later) are read with English sounds. All Hindi and Hinglish
+  wording, including the speech scripts, needs review by the clinic before production use.
 
 **Needs the owner's input before going further**
 
@@ -296,7 +300,7 @@ Not verified by a person: what the voice sounds like, and behaviour in browsers 
 **Before**
 
 - [ ] `scripts/reset_demo.py --yes` run; app started; three tabs open
-- [ ] Test speaker heard (or decided to present without sound)
+- [ ] Test English voice (and Test Hindi voice) heard (or decided to present without sound)
 - [ ] Dashboard shows 4 sample bookings, 0 callbacks, no call activity
 
 **Show**
